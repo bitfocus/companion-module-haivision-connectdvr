@@ -6,11 +6,14 @@ var log;
 
 function instance(system, id, config) {
 	this.defineConst('MIN_BUFFER_TIME', 25);
+	this.defineConst('RECONNECT_TIMEOUT', 60); // Number of seconds to try reconnect
+	this.defineConst('REBOOT_WAIT_TIME', 210); // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
 	instance_skel.apply(this, arguments);
 
 	this.channels = {};
 	this.cur_channel = null;
 	this.session_id = null;
+	this.cur_time = null;
 	this.actions(); // export actions
 
 	return this;
@@ -26,7 +29,7 @@ instance.prototype.init = function() {
 	this.status(this.STATUS_UNKNOWN);
 
 	if(this.config.host) {
-		this.login();
+		this.login(false);
 	}
 };
 
@@ -50,21 +53,38 @@ instance.prototype.init_socket = function() {
 	}.bind(this));
 
 	this.socket.on('connect_error', function(err) {
-		console.log(err);
+		console.log('Connection failure.');
 		this.status(this.STATUS_ERROR);
+		this.socket.close(); // Possibly a reboot/lost network, we'll need to wait to try another reconnect
+
+		this.keep_login_retry(this.RECONNECT_TIMEOUT);
 	}.bind(this));
 
-	this.cur_time = null;
 	this.socket
 		.on('model:delta', function(type, arg1) {
-				if(type === 'player' && arg1 && 'time' in arg1) {
-					this.cur_time = parseFloat(arg1.time);
+				if(type === 'player') {
+					if(!arg1) {
+						return;
+					}
+					if('time' in arg1) {
+						this.cur_time = parseFloat(arg1.time);
+					} else if('active_channel_id' in arg1) {
+						console.log('setting active channel to ' + arg1.active_channel_id)
+						this.set_live_channel(arg1.active_channel_id);
+					}
+				} else if(type in this.channels) {
+					this.channels[type] = {...this.channels[type], ...arg1};
 				}
 			}.bind(this))
 		.on('data:init', this.device_init.bind(this));
 };
 
-instance.prototype.login = function() {
+instance.prototype.keep_login_retry = function(timeout) {
+	console.log('Attempt reconnect in ' + timeout + ' seconds.');
+	setTimeout(this.login.bind(this, true), timeout * 1000);
+}
+
+instance.prototype.login = function(retry = false) {
 	request.post({
 		url: 'https://' + this.config.host + '/api/session',
 		json: true,
@@ -79,6 +99,9 @@ instance.prototype.login = function() {
 		if(response.statusCode !== 200) {
 			console.log('Could not connect: ' + error)
 			this.status(this.STATUS_ERROR);
+			if(retry) {
+				this.keep_login_retry(this.RECONNECT_TIMEOUT);
+			}
 			return;
 		}
 
@@ -91,9 +114,11 @@ instance.prototype.login = function() {
 
 instance.prototype.device_init = function(data) {
 	this.channels = {};
+	if('active_channel_id' in data.player) {
+		this.set_live_channel(data.player['active_channel_id']);
+	}
 	data.channel.forEach(function(id) {
 		this.channels[id] = data[id];
-		if(data[id].isLive) this.set_live_channel(id);
 	}.bind(this));
 
 	this.actions();
@@ -143,6 +168,8 @@ instance.prototype.destroy = function() {
 		return;
 	}
 
+	this.socket.close();
+
 	request.delete({
 		url: 'https://' + this.config.host + '/api/session',
 		headers: {
@@ -191,6 +218,7 @@ instance.prototype.actions = function(system) {
 				}
 			]
 		},
+		'reboot': { label: 'Reboot Device'},
 		'skip': {
 			label: 'Skip',
 			options: [
@@ -237,13 +265,41 @@ instance.prototype.load_channel = function(id, init_time) {
 }
 
 instance.prototype.skip_live = function(time) {
+	if(!this.cur_channel) {
+		return false; // No clip is currently playing
+	}
+
+	time = parseFloat(time);
 	console.log('Skipping time: ' + time + ' (from ' + this.cur_time + ' to ' + (this.cur_time + time) + ')');
 	if(!this.cur_time) {
 		return false;
 	}
 
-	this.load_channel(this.cur_channel, this.cur_time + parseFloat(time));
+	this.load_channel(this.cur_channel, this.cur_time + time);
 	return true;
+}
+
+instance.prototype.reboot = function() {
+	this.status(this.STATUS_ERROR);
+
+	request.put({
+		url: 'https://' + this.config.host + '/api/settings/reboot',
+		headers: {
+			Cookie: 'sessionID=' + this.session_id
+		},
+		json: true,
+		body: {
+			id: 0
+		},
+		rejectUnauthorized: false,
+		requestCert: true,
+		agent: false
+	}, function(error, response, body) {
+		console.log('Rebooting...');
+	});
+
+	this.socket.close();
+	this.keep_login_retry(this.REBOOT_WAIT_TIME);
 }
 
 instance.prototype.action = function(action) {
@@ -261,6 +317,10 @@ instance.prototype.action = function(action) {
 
 		case 'skip':
 			this.skip_live(opt.skip_time);
+			break;
+
+		case 'reboot':
+			this.reboot();
 			break;
 	}
 }
