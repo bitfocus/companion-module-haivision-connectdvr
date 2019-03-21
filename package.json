@@ -7,5 +7,12 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Justin Osborne",
-  "license": "ISC"
+  "license": "ISC",
+	"keywords": ["Video"],
+  "manufacturer": "Haivision",
+  "product": "DisplayEngine",
+  "shortname": "de",
+	"dependencies": {
+		"socket.io-client": "2.2.0"
+	}
 }
