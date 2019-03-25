@@ -248,8 +248,27 @@ instance.prototype.play_pause = function() {
 }
 
 instance.prototype.load_channel = function(id, init_time) {
+	init_time = this._get_new_init_time(id, init_time);
+
+	console.log('Loading channel ' + id + ' @ ' + init_time);
+
+	this.socket.emit('sendAndCallback2', 'playback:loadChannel', id, init_time, false, false);
+	this.set_live_channel(id);
+	return true;
+}
+
+instance.prototype.is_live = function(id) {
+	return this.channels[id].isLive;
+}
+
+instance.prototype._get_new_init_time = function(id, init_time) {
 	if(init_time === '') {
-		init_time = this.channels[id].duration;
+		// Check if stream is live, if it's live go to the end; otherwise go to the beginning
+		if(!this.is_live(id)) {
+			init_time = 0;
+		} else {
+			init_time = this.channels[id].duration;
+		}
 	}
 
 	// Always verify that we don't go to the very end of the video
@@ -258,10 +277,9 @@ instance.prototype.load_channel = function(id, init_time) {
 		if(init_time <= 0) init_time = 0;
 	}
 
-	console.log('Loading channel ' + id + ' @ ' + init_time);
-	this.socket.emit('sendAndCallback2', 'playback:loadChannel', id, parseFloat(init_time), false, false);
-	this.set_live_channel(id);
-	return true;
+	init_time = parseFloat(init_time);
+
+	return this.init_time = init_time;
 }
 
 instance.prototype.skip_live = function(time) {
