@@ -154,7 +154,7 @@ instance.prototype.config_fields = function () {
 			type: 'textinput',
 			id: 'host',
 			label: 'Target IP',
-			width: 8,
+			width: 12,
 			regex: this.REGEX_IP
 		},
 		{
@@ -162,13 +162,13 @@ instance.prototype.config_fields = function () {
 			id: 'username',
 			label: 'Username',
 			value: 'haiadmin',
-			width: 15
+			width: 6
 		},
 		{
 			type: 'textinput',
 			id: 'password',
 			label: 'Password',
-			width: 15
+			width: 6
 		}
 	]
 }
