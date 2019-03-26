@@ -279,19 +279,16 @@ instance.prototype._get_new_init_time = function(id, init_time) {
 
 	init_time = parseFloat(init_time);
 
-	return this.init_time = init_time;
+	return this.cur_time = init_time;
 }
 
 instance.prototype.skip_live = function(time) {
-	if(!this.cur_channel) {
+	if(!this.cur_channel || !this.cur_time) {
 		return false; // No clip is currently playing
 	}
 
 	time = parseFloat(time);
 	console.log('Skipping time: ' + time + ' (from ' + this.cur_time + ' to ' + (this.cur_time + time) + ')');
-	if(!this.cur_time) {
-		return false;
-	}
 
 	this.load_channel(this.cur_channel, this.cur_time + time);
 	return true;
