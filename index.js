@@ -1,8 +1,6 @@
 var instance_skel = require('../../instance_skel');
 var io = require('socket.io-client');
 var request = require('request');
-var debug;
-var log;
 
 function instance(system, id, config) {
 	this.defineConst('MIN_BUFFER_TIME', 25);
@@ -25,9 +23,6 @@ instance.prototype.updateConfig = function(config) {
 }
 
 instance.prototype.init = function() {
-	debug = this.debug;
-	log = this.log;
-
 	this.status(this.STATUS_UNKNOWN);
 
 	if(this.config.host) {
@@ -59,11 +54,10 @@ instance.prototype.init_socket = function() {
 				if(type === 'player') {
 					if(!arg1) {
 						return;
-					}
-					if('time' in arg1) {
+					} else if('time' in arg1) {
 						this.cur_time = parseFloat(arg1.time);
 					} else if('active_channel_id' in arg1) {
-						console.log('setting active channel to ' + arg1.active_channel_id)
+						this.debug('Setting active channel to ' + arg1.active_channel_id);
 						this.set_live_channel(arg1.active_channel_id);
 					}
 				} else if(type in this.channels) {
@@ -74,7 +68,8 @@ instance.prototype.init_socket = function() {
 }
 
 instance.prototype._reconnect = function(retry_immediately) {
-	this.log('warn', 'Socket connection ended either from possible stale session or network issue.');
+	this.debug('Connection ended, could be due to a stale connection/logout/reboot/network issue.');
+	this.log('warn', 'Connection to server ended. Will attempt to reconnect.');
 	this.status(this.STATUS_ERROR);
 	this.socket.close(); // Possibly a reboot/lost network, we'll need to wait to try another reconnect
 
@@ -86,10 +81,12 @@ instance.prototype._reconnect = function(retry_immediately) {
 }
 
 instance.prototype.keep_login_retry = function(timeout) {
-	if(!this.reconnecting) {
-		console.log('Attempt reconnect in ' + timeout + ' seconds.');
-		this.reconnecting = setTimeout(this.login.bind(this, true), timeout * 1000);
+	if(this.reconnecting) {
+		return;
 	}
+
+	this.log('info', 'Attempting to reconnect in ' + timeout + ' seconds.');
+	this.reconnecting = setTimeout(this.login.bind(this, true), timeout * 1000);
 }
 
 instance.prototype.login = function(retry = false) {
@@ -109,7 +106,8 @@ instance.prototype.login = function(retry = false) {
 		agent: false
 	}, function(error, response, session_content) {
 		if(!('statusCode' in response) || response.statusCode !== 200) {
-			console.log('Could not connect: ' + error)
+			this.debug('Could not connect, error: ' + error);
+			this.log('warn', 'Could not connect to server.');
 			this.status(this.STATUS_ERROR);
 			if(retry) {
 				this.keep_login_retry(this.RECONNECT_TIMEOUT);
@@ -118,7 +116,7 @@ instance.prototype.login = function(retry = false) {
 		}
 
 		this.session_id = session_content.response.sessionID;
-		this.log('info', 'Session ID ready: ' + this.session_id);
+		this.log('info', 'Successfully connected. Session ID is ' + this.session_id + '.');
 
 		this.init_socket();
 	}.bind(this));
@@ -135,7 +133,7 @@ instance.prototype.device_init = function(data) {
 
 	this.actions();
 	this.init_feedbacks();
-};
+}
 
 instance.prototype.set_live_channel = function(id) {
 	this.cur_channel = id;
@@ -173,7 +171,7 @@ instance.prototype.config_fields = function () {
 			width: 15
 		}
 	]
-};
+}
 
 instance.prototype.destroy = function() {
 	if(!this.session_id) {
@@ -194,21 +192,24 @@ instance.prototype.destroy = function() {
 		agent: false
 	}, function(error, response, body) {
 		if(response.statusCode !== 200) {
-			console.log('Could not logout: ' + error);
+			this.debug('warn', 'Could not logout: ' + error);
 			return;
 		} else {
-			console.log('Session destroyed.');
+			this.log('info', 'Session logged out.');
 		}
-	});
-};
+	}.bind(this));
+}
 
 instance.prototype._get_channel_choices = function() {
 	ret = [];
 	for(id in this.channels) {
-		ret.push({id: this.channels[id].id, label: this.channels[id].name})
+		ret.push({
+			id: this.channels[id].id,
+			label: this.channels[id].name
+		});
 	}
 	return ret;
-};
+}
 
 instance.prototype.actions = function(system) {
 	this.system.emit('instance_actions', this.id, {
@@ -240,12 +241,14 @@ instance.prototype.actions = function(system) {
 					 id: 'skip_time',
 					 default: '5',
 					 choices: [
-						{ id: '-300', label: 'Back 5 Minutes' },
-						{ id: '-60', label: 'Back 1 Minute' },
-						{ id: '-5', label: 'Back 5 Seconds' },
-						{ id: '5', label: 'Forward 5 Seconds' },
-						{ id: '60', label: 'Forward 1 Minute' },
-						{ id: '300', label: 'Foward 5 Minute' },
+						{ id: '-300', label: '<- 300 Seconds' },
+						{ id: '-60', label: '<- 60 Seconds' },
+						{ id: '-5', label: '<- 5 Seconds' },
+						{ id: '-1', label: '<- 1 Second' },
+						{ id: '1', label: '-> 1 Second' },
+						{ id: '5', label: '-> 5 Seconds' },
+						{ id: '60', label: '-> 60 Seconds' },
+						{ id: '300', label: '-> 300 Seconds' },
 					]
 				}
 			]
@@ -254,7 +257,7 @@ instance.prototype.actions = function(system) {
 }
 
 instance.prototype.play_pause = function() {
-	console.log('Pausing/playing');
+	this.log('info', 'Sending pause/play command.');
 	this.socket.emit('sendAndCallback2', 'playback:togglePlayState');
 	return true;
 }
@@ -262,7 +265,7 @@ instance.prototype.play_pause = function() {
 instance.prototype.load_channel = function(id, init_time) {
 	init_time = this._get_new_init_time(id, init_time);
 
-	console.log('Loading channel ' + id + ' @ ' + init_time);
+	this.log('info', 'Loading channel ' + id + ' at ' + init_time + '.');
 
 	this.socket.emit('sendAndCallback2', 'playback:loadChannel', id, init_time, false, false);
 	this.set_live_channel(id);
@@ -300,7 +303,7 @@ instance.prototype.skip_live = function(time) {
 	}
 
 	time = parseFloat(time);
-	console.log('Skipping time: ' + time + ' (from ' + this.cur_time + ' to ' + (this.cur_time + time) + ')');
+	this.log('info', 'Skipping time by ' + time + '. From ' + this.cur_time + ' -> ' + (this.cur_time + time) + '.');
 
 	this.load_channel(this.cur_channel, this.cur_time + time);
 	return true;
@@ -322,8 +325,8 @@ instance.prototype.reboot = function() {
 		requestCert: true,
 		agent: false
 	}, function(error, response, body) {
-		console.log('Rebooting...');
-	});
+		this.log('info', 'Ending connecting and rebooting...');
+	}.bind(this));
 
 	this.socket.close();
 	this.keep_login_retry(this.REBOOT_WAIT_TIME);
@@ -378,7 +381,7 @@ instance.prototype.init_feedbacks = function() {
 	};
 
 	this.setFeedbackDefinitions(feedbacks);
-};
+}
 
 instance.prototype.feedback = function(feedback, bank) {
 	if(feedback.type == 'streaming') {
@@ -389,8 +392,7 @@ instance.prototype.feedback = function(feedback, bank) {
 	}
 	
 	return {};
-};
-
+}
 
 instance_skel.extendedBy(instance);
 exports = module.exports = instance;
