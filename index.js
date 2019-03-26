@@ -18,12 +18,33 @@ function instance(system, id, config) {
 	return this;
 }
 
+/**
+ * Initialize the available variables. (These are listed in the module config UI)
+ */
+instance.prototype.initVariables = function() {
+	var variables = [
+		{
+			label: 'Current playing time of video.',
+			name:  'time'
+		},
+		{
+			label: 'Current duration of playing video.',
+			name:  'duration'
+		}
+	];
+
+	this.setVariableDefinitions(variables);
+	this.setVariable('time', 'Not playing');
+	this.setVariable('duration', 'Not playing');
+}
+
 instance.prototype.updateConfig = function(config) {
 	this.config = config;
 }
 
 instance.prototype.init = function() {
 	this.status(this.STATUS_UNKNOWN);
+	this.initVariables();
 
 	if(this.config.host) {
 		this.login(false);
@@ -52,19 +73,44 @@ instance.prototype.init_socket = function() {
 		.on('logout', this._reconnect.bind(this, true))
 		.on('model:delta', function(type, arg1) {
 				if(type === 'player') {
-					if(!arg1) {
-						return;
-					} else if('time' in arg1) {
-						this.cur_time = parseFloat(arg1.time);
-					} else if('active_channel_id' in arg1) {
-						this.debug('Setting active channel to ' + arg1.active_channel_id);
-						this.set_live_channel(arg1.active_channel_id);
-					}
+					this._player_updates(arg1);
 				} else if(type in this.channels) {
-					this.channels[type] = {...this.channels[type], ...arg1};
+					this._channel_updates(type, arg1);
 				}
 			}.bind(this))
 		.on('data:init', this.device_init.bind(this));
+}
+
+instance.prototype._channel_updates = function(id, params) {
+	this.channels[id] = {...this.channels[id], ...params};
+
+	// If current channel is playing, update the duration variable
+	if(id === this.cur_channel) {
+		this.setVariable('duration', this._userFriendlyTime(this.channels[this.cur_channel].duration));
+	}
+	if('isLive' in params) {
+		this.checkFeedbacks('streaming');
+	}
+}
+
+instance.prototype._player_updates = function(args) {
+	if(!args) {
+		return;
+	}
+	if('time' in args) {
+		this._set_cur_time(args.time);
+	}
+	if('active_channel_id' in args) {
+		this.debug('Setting active channel to ' + args.active_channel_id);
+		this.set_live_channel(args.active_channel_id);
+	}
+}
+
+instance.prototype._set_cur_time = function(time) {
+	this.cur_time = parseFloat(time);
+	this.setVariable('time', this._userFriendlyTime(this.cur_time));
+
+	return this.cur_time;
 }
 
 instance.prototype._reconnect = function(retry_immediately) {
@@ -137,6 +183,7 @@ instance.prototype.device_init = function(data) {
 
 instance.prototype.set_live_channel = function(id) {
 	this.cur_channel = id;
+	this.checkFeedbacks('active');
 	return this;
 }
 
@@ -273,7 +320,13 @@ instance.prototype.load_channel = function(id, init_time) {
 }
 
 instance.prototype.is_live = function(id) {
-	return this.channels[id].isLive;
+	return id in this.channels && this.channels[id].isLive;
+}
+
+instance.prototype._userFriendlyTime = function(seconds) {
+	return new Date(1000 * seconds)
+		.toISOString()
+		.substr(11, 8);
 }
 
 instance.prototype._get_new_init_time = function(id, init_time) {
@@ -292,9 +345,7 @@ instance.prototype._get_new_init_time = function(id, init_time) {
 		if(init_time <= 0) init_time = 0;
 	}
 
-	init_time = parseFloat(init_time);
-
-	return this.cur_time = init_time;
+	return this._set_cur_time(init_time);
 }
 
 instance.prototype.skip_live = function(time) {
@@ -356,41 +407,79 @@ instance.prototype.action = function(action) {
 }
 
 instance.prototype.init_feedbacks = function() {
-	var self = this;
+	const channels = this._get_channel_choices();
 
-	// feedbacks
 	var feedbacks = {
-		playing: {
-			label: 'Video Playing',
-			description: 'If video is playing, change colors of the bank',
+		streaming: {
+			label: 'Channel is Streaming',
+			description: 'Indicates this channel is currently live streaming.',
 			options: [
 				{
 					type: 'colorpicker',
 					label: 'Foreground color',
 					id: 'fg',
-					default: self.rgb(255,255,255)
+					default: this.rgb(255,255,255)
 				},
 				{
 					type: 'colorpicker',
 					label: 'Background color',
 					id: 'bg',
-					default: self.rgb(100,255,0)
+					default: this.rgb(128, 0, 0)
 				},
+				{
+					type: 'dropdown',
+					label: 'Channel ID',
+					id: 'channel',
+					choices: channels
+				}
+			]
+		},
+		active: {
+			label: 'Channel is Active',
+			description: 'Indicates this channel is currently active (playing/paused).',
+			options: [
+				{
+					type: 'colorpicker',
+					label: 'Foreground color',
+					id: 'fg',
+					default: this.rgb(255,255,255)
+				},
+				{
+					type: 'colorpicker',
+					label: 'Background color',
+					id: 'bg',
+					default: this.rgb(51, 102, 0)
+				},
+				{
+					type: 'dropdown',
+					label: 'Channel ID',
+					id: 'channel',
+					choices: channels
+				}
 			]
 		}
 	};
 
 	this.setFeedbackDefinitions(feedbacks);
+
+	for(feedback in feedbacks) {
+		this.checkFeedbacks(feedback);
+	}
 }
 
 instance.prototype.feedback = function(feedback, bank) {
-	if(feedback.type == 'streaming') {
+	if(feedback.type === 'streaming' && this.is_live(feedback.options.channel)) {
+		return {
+			color: feedback.options.fg,
+			bgcolor: feedback.options.bg
+		};
+	} else if(feedback.type === 'active' && feedback.options.channel == this.cur_channel) {
 		return {
 			color: feedback.options.fg,
 			bgcolor: feedback.options.bg
 		};
 	}
-	
+
 	return {};
 }
 
