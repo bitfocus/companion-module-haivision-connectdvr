@@ -96,7 +96,7 @@ instance.prototype.login = function(retry = false) {
 		requestCert: true,
 		agent: false
 	}, function(error, response, session_content) {
-		if(response.statusCode !== 200) {
+		if(!('statusCode' in response) || response.statusCode !== 200) {
 			console.log('Could not connect: ' + error)
 			this.status(this.STATUS_ERROR);
 			if(retry) {
