@@ -8,6 +8,7 @@ function instance(system, id, config) {
 	this.defineConst('MIN_BUFFER_TIME', 25);
 	this.defineConst('RECONNECT_TIMEOUT', 60); // Number of seconds to try reconnect
 	this.defineConst('REBOOT_WAIT_TIME', 210); // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
+	this.reconnecting = null;
 	instance_skel.apply(this, arguments);
 
 	this.channels = {};
@@ -21,7 +22,8 @@ function instance(system, id, config) {
 
 instance.prototype.updateConfig = function(config) {
 	this.config = config;
-};
+}
+
 instance.prototype.init = function() {
 	debug = this.debug;
 	log = this.log;
@@ -31,7 +33,7 @@ instance.prototype.init = function() {
 	if(this.config.host) {
 		this.login(false);
 	}
-};
+}
 
 instance.prototype.init_socket = function() {
 	this.socket = io('https://' + this.config.host, {
@@ -50,17 +52,9 @@ instance.prototype.init_socket = function() {
 
 	this.socket.on('connect', function() {
 		this.status(this.STATUS_OK);
-	}.bind(this));
-
-	this.socket.on('connect_error', function(err) {
-		console.log('Connection failure.');
-		this.status(this.STATUS_ERROR);
-		this.socket.close(); // Possibly a reboot/lost network, we'll need to wait to try another reconnect
-
-		this.keep_login_retry(this.RECONNECT_TIMEOUT);
-	}.bind(this));
-
-	this.socket
+	}.bind(this))
+		.on('connect_error', this._reconnect.bind(this))
+		.on('logout', this._reconnect.bind(this, true))
 		.on('model:delta', function(type, arg1) {
 				if(type === 'player') {
 					if(!arg1) {
@@ -77,14 +71,32 @@ instance.prototype.init_socket = function() {
 				}
 			}.bind(this))
 		.on('data:init', this.device_init.bind(this));
-};
+}
+
+instance.prototype._reconnect = function(retry_immediately) {
+	this.log('warn', 'Socket connection ended either from possible stale session or network issue.');
+	this.status(this.STATUS_ERROR);
+	this.socket.close(); // Possibly a reboot/lost network, we'll need to wait to try another reconnect
+
+	if(retry_immediately) {
+		this.login(true);
+	} else {
+		this.keep_login_retry(this.RECONNECT_TIMEOUT);
+	}
+}
 
 instance.prototype.keep_login_retry = function(timeout) {
-	console.log('Attempt reconnect in ' + timeout + ' seconds.');
-	setTimeout(this.login.bind(this, true), timeout * 1000);
+	if(!this.reconnecting) {
+		console.log('Attempt reconnect in ' + timeout + ' seconds.');
+		this.reconnecting = setTimeout(this.login.bind(this, true), timeout * 1000);
+	}
 }
 
 instance.prototype.login = function(retry = false) {
+	if(this.reconnecting) {
+		clearTimeout(this.reconnecting);
+		this.reconnecting = null;
+	}
 	request.post({
 		url: 'https://' + this.config.host + '/api/session',
 		json: true,
@@ -106,7 +118,7 @@ instance.prototype.login = function(retry = false) {
 		}
 
 		this.session_id = session_content.response.sessionID;
-		console.log('Session ID ready: ' + this.session_id);
+		this.log('info', 'Session ID ready: ' + this.session_id);
 
 		this.init_socket();
 	}.bind(this));
