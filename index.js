@@ -10,6 +10,7 @@ function instance(system, id, config) {
 	instance_skel.apply(this, arguments);
 
 	this.channels = {};
+	this.player_status = {};
 	this.cur_channel = null;
 	this.session_id = null;
 	this.cur_time = null;
@@ -97,6 +98,8 @@ instance.prototype._player_updates = function(args) {
 	if(!args) {
 		return;
 	}
+
+	this.player_status = {...this.player_status, ...args};
 	if('time' in args) {
 		this._set_cur_time(args.time);
 	}
@@ -170,6 +173,7 @@ instance.prototype.login = function(retry = false) {
 
 instance.prototype.device_init = function(data) {
 	this.channels = {};
+	this.player_status = data.player;
 	if('active_channel_id' in data.player) {
 		this.set_live_channel(data.player['active_channel_id']);
 	}
@@ -279,6 +283,8 @@ instance.prototype.actions = function(system) {
 			]
 		},
 		'reboot': { label: 'Reboot Device'},
+		'play': { label: 'Play'},
+		'pause': { label: 'Pause'},
 		'skip': {
 			label: 'Skip',
 			options: [
@@ -392,6 +398,14 @@ instance.prototype.action = function(action) {
 			this.play_pause();
 			break;
 
+		case 'play':
+			this.play();
+			break;
+
+		case 'pause':
+			this.pause();
+			break;
+
 		case 'channel':
 			this.load_channel(opt.channel, opt.initial_time);
 			break;
@@ -403,6 +417,22 @@ instance.prototype.action = function(action) {
 		case 'reboot':
 			this.reboot();
 			break;
+	}
+}
+
+instance.prototype.play = function() {
+	if('playing' in this.player_status && (this.player_status.playing || !this.cur_channel)) {
+		return; // Already playing
+	} else {
+		this.play_pause();
+	}
+}
+
+instance.prototype.pause = function() {
+	if('playing' in this.player_status && (!this.player_status.playing || !this.cur_channel)) {
+		return; // Already playing
+	} else {
+		this.play_pause();
 	}
 }
 
