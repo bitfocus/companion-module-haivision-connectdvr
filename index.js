@@ -107,6 +107,10 @@ instance.prototype._player_updates = function(args) {
 		this.debug('Setting active channel to ' + args.active_channel_id);
 		this.set_live_channel(args.active_channel_id);
 	}
+	if('playing' in args) {
+		this.checkFeedbacks('playing');
+		this.checkFeedbacks('stopped');
+	}
 }
 
 instance.prototype._set_cur_time = function(time) {
@@ -487,6 +491,42 @@ instance.prototype.init_feedbacks = function() {
 					choices: channels
 				}
 			]
+		},
+		playing: {
+			label: 'Output playing',
+			description: 'Indicates a channel is currently playing.',
+			options: [
+				{
+					type: 'colorpicker',
+					label: 'Foreground color',
+					id: 'fg',
+					default: this.rgb(255,255,255)
+				},
+				{
+					type: 'colorpicker',
+					label: 'Background color',
+					id: 'bg',
+					default: this.rgb(51, 102, 0)
+				}
+			]
+		},
+		stopped: {
+			label: 'Output stopped',
+			description: 'Indicates a channel is currently stopped.',
+			options: [
+				{
+					type: 'colorpicker',
+					label: 'Foreground color',
+					id: 'fg',
+					default: this.rgb(255,255,255)
+				},
+				{
+					type: 'colorpicker',
+					label: 'Background color',
+					id: 'bg',
+					default: this.rgb(128, 0, 0)
+				}
+			]
 		}
 	};
 
@@ -504,6 +544,16 @@ instance.prototype.feedback = function(feedback, bank) {
 			bgcolor: feedback.options.bg
 		};
 	} else if(feedback.type === 'active' && feedback.options.channel == this.cur_channel) {
+		return {
+			color: feedback.options.fg,
+			bgcolor: feedback.options.bg
+		};
+	} else if(feedback.type === 'playing' && 'playing' in this.player_status && this.player_status.playing) {
+		return {
+			color: feedback.options.fg,
+			bgcolor: feedback.options.bg
+		};
+	} else if(feedback.type === 'stopped' && 'playing' in this.player_status && !this.player_status.playing) {
 		return {
 			color: feedback.options.fg,
 			bgcolor: feedback.options.bg
