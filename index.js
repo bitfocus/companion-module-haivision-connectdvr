@@ -101,18 +101,19 @@ class instance extends instance_skel {
 			}
 		});
 
-		this.socket.on('connect', function() {
-			this.status(this.STATUS_OK);
-		}.bind(this))
+		this.socket
+			.on('connect', () => {
+				this.status(this.STATUS_OK);
+			})
 			.on('connect_error', this._reconnect.bind(this))
 			.on('logout', this._reconnect.bind(this, true))
-			.on('model:delta', function(type, arg1) {
+			.on('model:delta', (type, arg1) => {
 					if(type === 'player') {
 						this._player_updates(arg1);
 					} else if(type in this.channels) {
 						this._channel_updates(type, arg1);
 					}
-				}.bind(this))
+				})
 			.on('data:init', this.device_init.bind(this));
 	}
 
@@ -228,7 +229,7 @@ class instance extends instance_skel {
 			rejectUnauthorized: false, // There's a good chance the DE doesn't have a valid cert
 			requestCert: true,
 			agent: false
-		}, function(error, response, session_content) {
+		}, (error, response, session_content) => {
 			if(!('statusCode' in response) || response.statusCode !== 200) {
 				this.debug('Could not connect, error: ' + error);
 				this.log('warn', 'Could not connect to server.');
@@ -243,7 +244,7 @@ class instance extends instance_skel {
 			this.log('info', 'Successfully connected. Session ID is ' + this.session_id + '.');
 
 			this.initSocket();
-		}.bind(this));
+		});
 	}
 
 	/**
@@ -258,9 +259,9 @@ class instance extends instance_skel {
 		if('active_channel_id' in data.player) {
 			this.set_live_channel(data.player['active_channel_id']);
 		}
-		data.channel.forEach(function(id) {
+		data.channel.forEach((id) => {
 			this.channels[id] = data[id];
-		}.bind(this));
+		});
 
 		this.actions();
 		this.initFeedbacks();
@@ -501,9 +502,9 @@ class instance extends instance_skel {
 			rejectUnauthorized: false,
 			requestCert: true,
 			agent: false
-		}, function(error, response, body) {
+		}, (error, response, body) => {
 			this.log('info', 'Ending connecting and rebooting...');
-		}.bind(this));
+		});
 
 		this.socket.close();
 		this.keep_login_retry(this.REBOOT_WAIT_TIME);
@@ -729,14 +730,14 @@ class instance extends instance_skel {
 			rejectUnauthorized: false,
 			requestCert: true,
 			agent: false
-		}, function(error, response, body) {
+		}, (error, response, body) => {
 			if(response.statusCode !== 200) {
 				this.debug('warn', 'Could not logout: ' + error);
 				return;
 			} else {
 				this.log('info', 'Session logged out.');
 			}
-		}.bind(this));		
+		});		
 	}
 
 	/**
