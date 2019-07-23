@@ -322,8 +322,15 @@ class instance extends instance_skel {
 	 * @access private
 	 * @since 1.0.0
 	 */
-	_get_channel_choices() {
+	_get_channel_choices(blank = false) {
 		var ret = [];
+
+		if(blank) {
+			ret.push({
+				id: '',
+				label: ''
+			});
+		}
 
 		for(var id in this.channels) {
 			ret.push({
@@ -350,7 +357,7 @@ class instance extends instance_skel {
 						type: 'dropdown',
 						label: 'Channel ID',
 						id: 'channel',
-						choices: this._get_channel_choices()
+						choices: this._get_channel_choices(true)
 					},
 					{
 						type: 'textinput',
@@ -399,6 +406,14 @@ class instance extends instance_skel {
 		return true;
 	}
 
+	_is_valid_channel(id) {
+		if(id in this.channels) {
+			return true;
+		}
+
+		return false;
+	}
+
 	/**
 	 * Load a channel to output
 	 * @param {String} id ID of channel to check
@@ -407,12 +422,17 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	load_channel(id, init_time) {
+		if(!this._is_valid_channel(id)) {
+			return false; // Do not attempt to load an invalid channal
+		}
+
 		init_time = this._get_new_init_time(id, init_time);
 
 		this.log('info', 'Loading channel ' + id + ' at ' + init_time + '.');
 
 		this.socket.emit('sendAndCallback2', 'playback:loadChannel', id, init_time, false, false);
 		this.set_live_channel(id);
+		
 		return true;
 	}
 
