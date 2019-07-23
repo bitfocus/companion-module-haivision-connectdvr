@@ -24,6 +24,7 @@ class instance extends instance_skel {
 		this.cur_channel = null;
 		this.session_id = null;
 		this.cur_time = null;
+		this.cuepoints = {};
 		this.actions(); // export actions
 
 		return this;
@@ -374,19 +375,60 @@ class instance extends instance_skel {
 				label: 'Skip',
 				options: [
 					{
-						type: 'dropdown',
-						label: 'Channel ID',
+						type: 'textinput',
+						label: 'Skip Time',
 						id: 'skip_time',
-						default: '5',
+						default: 5,
+						tooltip: 'Time, in seconds, to skip back/ahead. Use negative numbers to skip backwards.',
+						regex: this.REGEX_NUMBER
+					}
+				]
+			},
+			'set_cuepoint': {
+				label: 'Set Cue Point',
+				options: [
+					{
+						type: 'dropdown',
+						label: 'Slot Number',
+						id: 'cuepoint_id',
+						default: 1,
+						tooltip: 'Select a slot to store the current elapsed time and channel as a cuepoint for later recall. Set points do not survive a server restart.',
 						choices: [
-							{ id: '-300', label: '<- 300 Seconds' },
-							{ id: '-60', label: '<- 60 Seconds' },
-							{ id: '-5', label: '<- 5 Seconds' },
-							{ id: '-1', label: '<- 1 Second' },
-							{ id: '1', label: '-> 1 Second' },
-							{ id: '5', label: '-> 5 Seconds' },
-							{ id: '60', label: '-> 60 Seconds' },
-							{ id: '300', label: '-> 300 Seconds' },
+							{ id: '1', label: 'Slot 1' },
+							{ id: '2', label: 'Slot 2' },
+							{ id: '3', label: 'Slot 3' },
+							{ id: '4', label: 'Slot 4' },
+							{ id: '5', label: 'Slot 5' },
+						]
+					}
+				]
+			},
+			'recall_cuepoint': {
+				label: 'Recall Cue Point',
+				options: [
+					{
+						type: 'dropdown',
+						label: 'Slot Number',
+						id: 'cuepoint_id',
+						default: 1,
+						tooltip: 'Select a slot to recall. If there is not a cuepoint saved, nothing will happen. Use feedbacks to change colors if a cuepoint is set for a slot.',
+						choices: [
+							{ id: '1', label: 'Slot 1' },
+							{ id: '2', label: 'Slot 2' },
+							{ id: '3', label: 'Slot 3' },
+							{ id: '4', label: 'Slot 4' },
+							{ id: '5', label: 'Slot 5' },
+						]
+					},
+					{
+						type: 'dropdown',
+						label: 'Play State',
+						id: 'play_state',
+						default: 'pause',
+						tooltip: 'Should the clip start in a playing or paused state.',
+						choices: [
+							{ id: 'play', label: 'Playing' },
+							{ id: 'pause', label: 'Paused' }
 						]
 					}
 				]
@@ -484,6 +526,13 @@ class instance extends instance_skel {
 		return this._set_cur_time(init_time);
 	}
 
+	is_currently_active() {
+		if(!this.cur_channel || !this.cur_time) {
+			return false; // No clip is currently playing
+		}
+		return true;
+	}
+
 	/**
 	 * Skip to different time for output
 	 * @param {String} time Time to jump forward/behind
@@ -491,8 +540,8 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	skip_live(time) {
-		if(!this.cur_channel || !this.cur_time) {
-			return false; // No clip is currently playing
+		if(!this.is_currently_active()) {
+			return false;
 		}
 
 		time = parseFloat(time);
@@ -561,9 +610,45 @@ class instance extends instance_skel {
 				this.skip_live(opt.skip_time);
 				break;
 
+			case 'set_cuepoint':
+				this.set_cuepoint(opt.cuepoint_id);
+				break;
+
+			case 'recall_cuepoint':
+				this.recall_cuepoint(opt.cuepoint_id, opt.play_state);
+				break;
+
 			case 'reboot':
 				this.reboot();
 				break;
+		}
+	}
+
+	set_cuepoint(cuepoint_id) {
+		if(!this.is_currently_active()) {
+			this.log('info', 'No active channel to save cuepoint.');
+			return false;
+		}
+
+		this.log('info', 'Setting cuepoint for slot ' + cuepoint_id);
+		this.cuepoints[cuepoint_id] = {
+			channel: this.cur_channel,
+			time: this.cur_time
+		};
+	}
+
+	recall_cuepoint(cuepoint_id, play_state) {
+		if(!(cuepoint_id in this.cuepoints)) {
+			this.log('info', 'No cuepoint saved in slot ' + cuepoint_id);
+			return false;
+		}
+
+		this.log('info', 'Recalling cuepoint for slot ' + cuepoint_id);
+		const cuepoint = this.cuepoints[cuepoint_id];
+		this.load_channel(cuepoint.channel, cuepoint.time);
+
+		if(play_state === 'pause') {
+			this.play_pause();
 		}
 	}
 
