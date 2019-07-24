@@ -14,6 +14,7 @@
   "shortname": "de",
 	"dependencies": {
     "socket.io-client": "2.2.0",
-    "request": "~2.88.0"
+    "request": "~2.88.0",
+    "sharp": "~0.22.0"
 	}
 }

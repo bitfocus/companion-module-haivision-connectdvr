@@ -1,6 +1,7 @@
 var instance_skel = require('../../instance_skel');
 var io = require('socket.io-client');
 var request = require('request');
+const sharp = require('sharp');
 
 /**
  * Companion instance for managing Haivision DE devices
@@ -180,6 +181,7 @@ class instance extends instance_skel {
 	_set_cur_time(time) {
 		this.cur_time = parseFloat(time);
 		this.setVariable('time', this._userFriendlyTime(this.cur_time));
+		this.get_latest_image();
 
 		return this.cur_time;
 	}
@@ -846,7 +848,12 @@ class instance extends instance_skel {
 						choices: this._get_allowed_cuepoints()
 					}
 				]
+			},
+			previewpic: {
+				label: 'Preview',
+				description: 'Preview image'
 			}
+			//png64
 		};
 
 		this.setFeedbackDefinitions(feedbacks);
@@ -864,6 +871,30 @@ class instance extends instance_skel {
 		}
 	}
 
+	get_latest_image() {
+		let result;
+		try {
+			const buff = request.get({
+				url: 'https://' + this.config.host + '/assets/img/live_screenshot_primary.jpg',
+				rejectUnauthorized: false, // There's a good chance the DE doesn't have a valid cert
+				requestCert: true,
+				agent: false,
+				encoding: null
+			}, (error, resp, body) => {
+				sharp(new Buffer(body))
+					.resize(72, 48)
+					.png()
+					.toBuffer((err, buffer) => {
+						this.image = buffer;
+
+						this.checkFeedbacks('previewpic');
+					});
+				});
+		} catch (e) {
+			console.log('failed to pull image');
+		}
+	}
+
 	/**
 	 * 
 	 * @param {Object} feedback Feedback data to process
@@ -873,7 +904,14 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	feedback(feedback, bank) {
-		if(feedback.type === 'streaming' && this.is_live(feedback.options.channel)) {
+		if(feedback.type === 'previewpic') {
+			if(!this.image) return;
+
+			return {
+				png64: this.image
+			}
+		}
+		else if(feedback.type === 'streaming' && this.is_live(feedback.options.channel)) {
 			let ret = {};
 			if(feedback.options.fg !== 16777215 || feedback.options.bg !== 16777215) {
 				ret.color = feedback.options.fg;
