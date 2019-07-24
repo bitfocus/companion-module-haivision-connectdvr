@@ -461,16 +461,16 @@ class instance extends instance_skel {
 	 * @access public
 	 * @since 1.0.0
 	 */
-	load_channel(id, init_time) {
+	load_channel(id, init_time, callback = null) {
 		if(!this._is_valid_channel(id)) {
-			return false; // Do not attempt to load an invalid channal
+			return false; // Do not attempt to load an invalid channel
 		}
 
 		init_time = this._get_new_init_time(id, init_time);
 
 		this.log('info', 'Loading channel ' + id + ' at ' + init_time + '.');
 
-		this.socket.emit('sendAndCallback2', 'playback:loadChannel', id, init_time, false, false);
+		this.socket.emit('sendAndCallback2', 'playback:loadChannel', id, init_time, false, false, callback);
 		this.set_live_channel(id);
 		
 		return true;
@@ -645,11 +645,7 @@ class instance extends instance_skel {
 
 		this.log('info', 'Recalling cuepoint for slot ' + cuepoint_id);
 		const cuepoint = this.cuepoints[cuepoint_id];
-		this.load_channel(cuepoint.channel, cuepoint.time);
-
-		if(play_state === 'pause') {
-			this.play_pause();
-		}
+		this.load_channel(cuepoint.channel, cuepoint.time, play_state === 'pause' ? this.play_pause.bind(this) : null);
 	}
 
 	/**
