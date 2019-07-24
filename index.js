@@ -14,6 +14,8 @@ class instance extends instance_skel {
 		super(system, id, config);
 
 		this.defineConst('MIN_BUFFER_TIME', 25);
+		this.defineConst('USE_STREAM_CACHE', true); // Use cloud_cache instead of isLive param
+		this.defineConst('CACHE_FEEDBACK_TIME', 30000); // Check for caching stream every 30 seconds
 		this.defineConst('RECONNECT_TIMEOUT', 60); // Number of seconds to try reconnect
 		this.defineConst('REBOOT_WAIT_TIME', 210); // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
 
@@ -24,6 +26,7 @@ class instance extends instance_skel {
 		this.cur_channel = null;
 		this.session_id = null;
 		this.cur_time = null;
+		this.stream_cache_feedback = null;
 		this.cuepoints = {};
 		this.actions(); // export actions
 
@@ -132,8 +135,14 @@ class instance extends instance_skel {
 		if(id === this.cur_channel) {
 			this.setVariable('duration', this._userFriendlyTime(this.channels[this.cur_channel].duration));
 		}
-		if('isLive' in params) {
+
+		if('isLive' in params && !this.USE_STREAM_CACHE) {
 			this.checkFeedbacks('streaming');
+		}
+
+		if('cloud_duration' in params && params['cloud_duration'] > 0) {
+			this.channels[id].cloud_date = new Date(); // Last time the cloud was updated
+			if(this.USE_STREAM_CACHE) this.checkFeedbacks('streaming');
 		}
 	}
 
@@ -494,7 +503,18 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	is_live(id) {
-		return id in this.channels && this.channels[id].isLive;
+		if(this._is_valid_channel(id)) {
+			if(!this.USE_STREAM_CACHE) {
+				return this.channels[id].isLive;
+			}
+
+			// Cloud updates should be sent every 5 seconds or so
+			if('cloud_date' in this.channels[id] && (new Date - this.channels[id].cloud_date) <= 15000) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -727,7 +747,13 @@ class instance extends instance_skel {
 						type: 'colorpicker',
 						label: 'Background color',
 						id: 'bg',
-						default: this.rgb(128, 0, 0)
+						default: this.rgb(255,255,255)
+					},
+					{
+						type: 'textinput',
+						label: 'Text',
+						id: 'text',
+						default: ''
 					},
 					{
 						type: 'dropdown',
@@ -825,8 +851,16 @@ class instance extends instance_skel {
 
 		this.setFeedbackDefinitions(feedbacks);
 
-		for(var feedback in feedbacks) {
+		for(let feedback in feedbacks) {
 			this.checkFeedbacks(feedback);
+		}
+
+		if(this.USE_STREAM_CACHE) {
+			if(this.stream_cache_feedback) {
+				clearInterval(this.stream_cache_feedback);
+			}
+
+			this.stream_cache_feedback = setInterval(this.checkFeedbacks.bind(this, 'streaming'), this.CACHE_FEEDBACK_TIME);
 		}
 	}
 
@@ -840,10 +874,16 @@ class instance extends instance_skel {
 	 */
 	feedback(feedback, bank) {
 		if(feedback.type === 'streaming' && this.is_live(feedback.options.channel)) {
-			return {
-				color: feedback.options.fg,
-				bgcolor: feedback.options.bg
-			};
+			let ret = {};
+			if(feedback.options.fg !== 16777215 || feedback.options.bg !== 16777215) {
+				ret.color = feedback.options.fg;
+				ret.bgcolor = feedback.options.bg;
+			}
+			if('text' in feedback.options && feedback.options.text !== '') {
+				ret.text = feedback.options.text;
+			}
+
+			return ret;
 		} else if(feedback.type === 'active' && feedback.options.channel == this.cur_channel) {
 			return {
 				color: feedback.options.fg,
