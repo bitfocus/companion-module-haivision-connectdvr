@@ -393,13 +393,7 @@ class instance extends instance_skel {
 						id: 'cuepoint_id',
 						default: 1,
 						tooltip: 'Select a slot to store the current elapsed time and channel as a cuepoint for later recall. Set points do not survive a server restart.',
-						choices: [
-							{ id: '1', label: 'Slot 1' },
-							{ id: '2', label: 'Slot 2' },
-							{ id: '3', label: 'Slot 3' },
-							{ id: '4', label: 'Slot 4' },
-							{ id: '5', label: 'Slot 5' },
-						]
+						choices: this._get_allowed_slots()
 					}
 				]
 			},
@@ -412,13 +406,7 @@ class instance extends instance_skel {
 						id: 'cuepoint_id',
 						default: 1,
 						tooltip: 'Select a slot to recall. If there is not a cuepoint saved, nothing will happen. Use feedbacks to change colors if a cuepoint is set for a slot.',
-						choices: [
-							{ id: '1', label: 'Slot 1' },
-							{ id: '2', label: 'Slot 2' },
-							{ id: '3', label: 'Slot 3' },
-							{ id: '4', label: 'Slot 4' },
-							{ id: '5', label: 'Slot 5' },
-						]
+						choices: this._get_allowed_slots()
 					},
 					{
 						type: 'dropdown',
@@ -434,6 +422,16 @@ class instance extends instance_skel {
 				]
 			}
 		});
+	}
+
+	_get_allowed_slots() {
+		return [
+			{ id: '1', label: 'Slot 1' },
+			{ id: '2', label: 'Slot 2' },
+			{ id: '3', label: 'Slot 3' },
+			{ id: '4', label: 'Slot 4' },
+			{ id: '5', label: 'Slot 5' },
+		];
 	}
 
 	/**
@@ -635,6 +633,8 @@ class instance extends instance_skel {
 			channel: this.cur_channel,
 			time: this.cur_time
 		};
+
+		this.checkFeedbacks('cuepoint');
 	}
 
 	recall_cuepoint(cuepoint_id, play_state) {
@@ -685,7 +685,7 @@ class instance extends instance_skel {
 	initFeedbacks() {
 		const channels = this._get_channel_choices();
 
-		var feedbacks = {
+		const feedbacks = {
 			streaming: {
 				label: 'Channel is Streaming',
 				description: 'Indicates this channel is currently live streaming.',
@@ -769,6 +769,30 @@ class instance extends instance_skel {
 						default: this.rgb(128, 0, 0)
 					}
 				]
+			},
+			cuepoint: {
+				label: 'Cue Point Slot Saved',
+				description: 'Indicates a cue point is saved.',
+				options: [
+					{
+						type: 'colorpicker',
+						label: 'Foreground color',
+						id: 'fg',
+						default: this.rgb(255,255,255)
+					},
+					{
+						type: 'colorpicker',
+						label: 'Background color',
+						id: 'bg',
+						default: this.rgb(128, 0, 0)
+					},
+					{
+						type: 'dropdown',
+						label: 'Channel ID',
+						id: 'cuepoint_id',
+						choices: this._get_allowed_slots()
+					}
+				]
 			}
 		};
 
@@ -794,6 +818,11 @@ class instance extends instance_skel {
 				bgcolor: feedback.options.bg
 			};
 		} else if(feedback.type === 'active' && feedback.options.channel == this.cur_channel) {
+			return {
+				color: feedback.options.fg,
+				bgcolor: feedback.options.bg
+			};
+		} else if(feedback.type === 'cuepoint' && feedback.options.cuepoint_id in this.cuepoints) {
 			return {
 				color: feedback.options.fg,
 				bgcolor: feedback.options.bg
