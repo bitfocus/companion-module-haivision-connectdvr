@@ -393,7 +393,7 @@ class instance extends instance_skel {
 						id: 'cuepoint_id',
 						default: 1,
 						tooltip: 'Select a slot to store the current elapsed time and channel as a cuepoint for later recall. Set points do not survive a server restart.',
-						choices: this._get_allowed_slots()
+						choices: this._get_allowed_cuepoints()
 					}
 				]
 			},
@@ -406,7 +406,7 @@ class instance extends instance_skel {
 						id: 'cuepoint_id',
 						default: 1,
 						tooltip: 'Select a slot to recall. If there is not a cuepoint saved, nothing will happen. Use feedbacks to change colors if a cuepoint is set for a slot.',
-						choices: this._get_allowed_slots()
+						choices: this._get_allowed_cuepoints()
 					},
 					{
 						type: 'dropdown',
@@ -424,7 +424,13 @@ class instance extends instance_skel {
 		});
 	}
 
-	_get_allowed_slots() {
+	/**
+	 * Returns list of allowed cue points slots
+	 * @access protected
+	 * @return {Object}
+	 * @since 1.1.0
+	 */
+	_get_allowed_cuepoints() {
 		return [
 			{ id: '1', label: 'Slot 1' },
 			{ id: '2', label: 'Slot 2' },
@@ -446,6 +452,11 @@ class instance extends instance_skel {
 		return true;
 	}
 
+	/**
+	 * Insures that the channel is currently setup on the device
+	 * @param {String} id 
+	 * @returns {Boolean}
+	 */
 	_is_valid_channel(id) {
 		if(id in this.channels) {
 			return true;
@@ -524,6 +535,12 @@ class instance extends instance_skel {
 		return this._set_cur_time(init_time);
 	}
 
+	/**
+	 * Checks if a channel is currently active
+	 * @returns {Boolean}
+	 * @access public
+	 * @since 1.1.0
+	 */
 	is_currently_active() {
 		if(!this.cur_channel || !this.cur_time) {
 			return false; // No clip is currently playing
@@ -622,6 +639,12 @@ class instance extends instance_skel {
 		}
 	}
 
+	/**
+	 * Set a cuepoint
+	 * @param {String} cuepoint_id 
+	 * @access public
+	 * @since 1.1.0
+	 */
 	set_cuepoint(cuepoint_id) {
 		if(!this.is_currently_active()) {
 			this.log('info', 'No active channel to save cuepoint.');
@@ -637,6 +660,14 @@ class instance extends instance_skel {
 		this.checkFeedbacks('cuepoint');
 	}
 
+	/**
+	 * Recalls a saved cuepoint
+	 * @param {String} cuepoint_id 
+	 * @param {String} play_state How to start the recall (play/pause)
+	 * @access public
+	 * @returns {Boolean|void}
+	 * @since 1.1.0
+	 */
 	recall_cuepoint(cuepoint_id, play_state) {
 		if(!(cuepoint_id in this.cuepoints)) {
 			this.log('info', 'No cuepoint saved in slot ' + cuepoint_id);
@@ -786,7 +817,7 @@ class instance extends instance_skel {
 						type: 'dropdown',
 						label: 'Channel ID',
 						id: 'cuepoint_id',
-						choices: this._get_allowed_slots()
+						choices: this._get_allowed_cuepoints()
 					}
 				]
 			}
