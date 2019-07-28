@@ -373,7 +373,8 @@ class instance extends instance_skel {
 						type: 'textinput',
 						label: 'Start time (blank for end)',
 						id: 'initial_time',
-						default: ''
+						default: '',
+						regex: this.REGEX_SIGNED_NUMBER
 					}
 				]
 			},
@@ -389,7 +390,7 @@ class instance extends instance_skel {
 						id: 'skip_time',
 						default: 5,
 						tooltip: 'Time, in seconds, to skip back/ahead. Use negative numbers to skip backwards.',
-						regex: this.REGEX_NUMBER
+						regex: this.REGEX_SIGNED_NUMBER
 					}
 				]
 			},
