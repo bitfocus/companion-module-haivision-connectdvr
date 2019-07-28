@@ -1,6 +1,10 @@
-var instance_skel = require('../../instance_skel');
-var io = require('socket.io-client');
-var request = require('request');
+const instance_skel = require('../../instance_skel');
+const io = require('socket.io-client');
+const request = require('request').defaults({
+	rejectUnauthorized: false, // There's a good chance the DE doesn't have a valid cert
+	requestCert: true,
+	agent: false
+});
 const sharp = require('sharp');
 
 /**
@@ -237,12 +241,9 @@ class instance extends instance_skel {
 			body: {
 				username: this.config.username,
 				password: this.config.password
-			},
-			rejectUnauthorized: false, // There's a good chance the DE doesn't have a valid cert
-			requestCert: true,
-			agent: false
+			}
 		}, (error, response, session_content) => {
-			if(!('statusCode' in response) || response.statusCode !== 200) {
+			if(!response || !('statusCode' in response) || response.statusCode !== 200) {
 				this.debug('Could not connect, error: ' + error);
 				this.log('warn', 'Could not connect to server.');
 				this.status(this.STATUS_ERROR);
@@ -604,10 +605,7 @@ class instance extends instance_skel {
 			json: true,
 			body: {
 				id: 0
-			},
-			rejectUnauthorized: false,
-			requestCert: true,
-			agent: false
+			}
 		}, (error, response, body) => {
 			this.log('info', 'Ending connecting and rebooting...');
 		});
@@ -876,9 +874,6 @@ class instance extends instance_skel {
 		try {
 			const buff = request.get({
 				url: 'https://' + this.config.host + '/assets/img/live_screenshot_primary.jpg',
-				rejectUnauthorized: false, // There's a good chance the DE doesn't have a valid cert
-				requestCert: true,
-				agent: false,
 				encoding: null
 			}, (error, resp, body) => {
 				sharp(new Buffer(body))
@@ -965,10 +960,7 @@ class instance extends instance_skel {
 				Cookie: 'sessionID=' + this.session_id
 			},
 			json: true,
-			body: {},
-			rejectUnauthorized: false,
-			requestCert: true,
-			agent: false
+			body: {}
 		}, (error, response, body) => {
 			if(response.statusCode !== 200) {
 				this.debug('warn', 'Could not logout: ' + error);
