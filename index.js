@@ -23,6 +23,7 @@ class instance extends instance_skel {
 		this.defineConst('CACHE_FEEDBACK_TIME', 30000); // Check for caching stream every 30 seconds
 		this.defineConst('RECONNECT_TIMEOUT', 60); // Number of seconds to try reconnect
 		this.defineConst('REBOOT_WAIT_TIME', 210); // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
+		this.defineConst('PREVIEW_REFRESH', 2000); // Only pull thumbnail every x millisec
 
 		this.reconnecting = null;
 
@@ -33,6 +34,7 @@ class instance extends instance_skel {
 		this.cur_time = null;
 		this.stream_cache_feedback = null;
 		this.cuepoints = {};
+		this._next_preview_refresh = Date.now();
 		this.actions(); // export actions
 
 		return this;
@@ -462,6 +464,7 @@ class instance extends instance_skel {
 	play_pause() {
 		this.log('info', 'Sending pause/play command.');
 		this.socket.emit('sendAndCallback2', 'playback:togglePlayState');
+		this.get_latest_image(true);
 		return true;
 	}
 
@@ -850,9 +853,8 @@ class instance extends instance_skel {
 			},
 			previewpic: {
 				label: 'Preview',
-				description: 'Preview image'
+				description: 'Preview output image'
 			}
-			//png64
 		};
 
 		this.setFeedbackDefinitions(feedbacks);
@@ -870,8 +872,14 @@ class instance extends instance_skel {
 		}
 	}
 
-	get_latest_image() {
-		let result;
+	get_latest_image(force = false) {
+		let cur_time = Date.now();
+
+		// Do not refresh if last refresh was recent
+		if(!force && this._next_preview_refresh > cur_time) {
+			return;
+		}
+
 		try {
 			const buff = request.get({
 				url: 'https://' + this.config.host + '/assets/img/live_screenshot_primary.jpg',
@@ -882,12 +890,14 @@ class instance extends instance_skel {
 					.png()
 					.toBuffer((err, buffer) => {
 						this.image = buffer;
-
+						this._next_preview_refresh = cur_time + this.PREVIEW_REFRESH;
 						this.checkFeedbacks('previewpic');
 					});
-				});
+			});
 		} catch (e) {
-			console.log('failed to pull image');
+			this.log('warn', 'Failed to pull latest image.');
+			this._next_preview_refresh = cur_time + this.PREVIEW_REFRESH;
+			this.image = null;
 		}
 	}
 
@@ -901,13 +911,12 @@ class instance extends instance_skel {
 	 */
 	feedback(feedback, bank) {
 		if(feedback.type === 'previewpic') {
-			if(!this.image) return;
-
-			return {
-				png64: this.image
+			if(this.image) {
+				return {
+					png64: this.image
+				}
 			}
-		}
-		else if(feedback.type === 'streaming' && this.is_live(feedback.options.channel)) {
+		} else if(feedback.type === 'streaming' && this.is_live(feedback.options.channel)) {
 			let ret = {};
 			if(feedback.options.fg !== 16777215 || feedback.options.bg !== 16777215) {
 				ret.color = feedback.options.fg;
