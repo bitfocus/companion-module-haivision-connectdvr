@@ -1,6 +1,11 @@
-var instance_skel = require('../../instance_skel');
-var io = require('socket.io-client');
-var request = require('request');
+const instance_skel = require('../../instance_skel');
+const io = require('socket.io-client');
+const request = require('request').defaults({
+	rejectUnauthorized: false, // There's a good chance the DE doesn't have a valid cert
+	requestCert: true,
+	agent: false
+});
+const sharp = require('sharp');
 
 /**
  * Companion instance for managing Haivision DE devices
@@ -18,6 +23,7 @@ class instance extends instance_skel {
 		this.defineConst('CACHE_FEEDBACK_TIME', 30000); // Check for caching stream every 30 seconds
 		this.defineConst('RECONNECT_TIMEOUT', 60); // Number of seconds to try reconnect
 		this.defineConst('REBOOT_WAIT_TIME', 210); // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
+		this.defineConst('PREVIEW_REFRESH', 2000); // Only pull thumbnail every x millisec
 
 		this.reconnecting = null;
 
@@ -28,6 +34,7 @@ class instance extends instance_skel {
 		this.cur_time = null;
 		this.stream_cache_feedback = null;
 		this.cuepoints = {};
+		this._next_preview_refresh = Date.now();
 		this.actions(); // export actions
 
 		return this;
@@ -180,6 +187,7 @@ class instance extends instance_skel {
 	_set_cur_time(time) {
 		this.cur_time = parseFloat(time);
 		this.setVariable('time', this._userFriendlyTime(this.cur_time));
+		this.get_latest_image();
 
 		return this.cur_time;
 	}
@@ -235,10 +243,7 @@ class instance extends instance_skel {
 			body: {
 				username: this.config.username,
 				password: this.config.password
-			},
-			rejectUnauthorized: false, // There's a good chance the DE doesn't have a valid cert
-			requestCert: true,
-			agent: false
+			}
 		}, (error, response, session_content) => {
 			if(typeof response !== 'object' || !('statusCode' in response) || response.statusCode !== 200) {
 				this.debug('Could not connect, error: ' + error);
@@ -459,6 +464,7 @@ class instance extends instance_skel {
 	play_pause() {
 		this.log('info', 'Sending pause/play command.');
 		this.socket.emit('sendAndCallback2', 'playback:togglePlayState');
+		this.get_latest_image(true);
 		return true;
 	}
 
@@ -603,10 +609,7 @@ class instance extends instance_skel {
 			json: true,
 			body: {
 				id: 0
-			},
-			rejectUnauthorized: false,
-			requestCert: true,
-			agent: false
+			}
 		}, (error, response, body) => {
 			this.log('info', 'Ending connecting and rebooting...');
 		});
@@ -622,8 +625,7 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	action(action) {
-		var cmd = null,
-			opt = action.options;
+		var opt = action.options;
 
 		switch (action.action) {
 			case 'playpause':
@@ -675,7 +677,8 @@ class instance extends instance_skel {
 		this.log('info', 'Setting cuepoint for slot ' + cuepoint_id);
 		this.cuepoints[cuepoint_id] = {
 			channel: this.cur_channel,
-			time: this.cur_time
+			time: this.cur_time,
+			image: this.image
 		};
 
 		this.checkFeedbacks('cuepoint');
@@ -842,11 +845,24 @@ class instance extends instance_skel {
 					},
 					{
 						type: 'dropdown',
-						label: 'Channel ID',
+						label: 'Use preview image if available?',
+						id: 'use_preview',
+						choices: [
+							{ id: '', label: 'No' },
+							{ id: 'image', label: 'Yes' }
+						]
+					},
+					{
+						type: 'dropdown',
+						label: 'Cuepoint Slot',
 						id: 'cuepoint_id',
 						choices: this._get_allowed_cuepoints()
 					}
 				]
+			},
+			previewpic: {
+				label: 'Preview',
+				description: 'Preview output image'
 			}
 		};
 
@@ -865,6 +881,35 @@ class instance extends instance_skel {
 		}
 	}
 
+	get_latest_image(force = false) {
+		let cur_time = Date.now();
+
+		// Do not refresh if last refresh was recent
+		if(!force && this._next_preview_refresh > cur_time) {
+			return;
+		}
+
+		try {
+			const buff = request.get({
+				url: 'https://' + this.config.host + '/assets/img/live_screenshot_primary.jpg',
+				encoding: null
+			}, (error, resp, body) => {
+				sharp(new Buffer(body))
+					.resize(72, 48)
+					.png()
+					.toBuffer((err, buffer) => {
+						this.image = buffer;
+						this._next_preview_refresh = cur_time + this.PREVIEW_REFRESH;
+						this.checkFeedbacks('previewpic');
+					});
+			});
+		} catch (e) {
+			this.log('warn', 'Failed to pull latest image.');
+			this._next_preview_refresh = cur_time + this.PREVIEW_REFRESH;
+			this.image = null;
+		}
+	}
+
 	/**
 	 * 
 	 * @param {Object} feedback Feedback data to process
@@ -874,7 +919,13 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	feedback(feedback, bank) {
-		if(feedback.type === 'streaming' && this.is_live(feedback.options.channel)) {
+		if(feedback.type === 'previewpic') {
+			if(this.image) {
+				return {
+					png64: this.image
+				}
+			}
+		} else if(feedback.type === 'streaming' && this.is_live(feedback.options.channel)) {
 			let ret = {};
 			if(feedback.options.fg !== 16777215 || feedback.options.bg !== 16777215) {
 				ret.color = feedback.options.fg;
@@ -891,10 +942,14 @@ class instance extends instance_skel {
 				bgcolor: feedback.options.bg
 			};
 		} else if(feedback.type === 'cuepoint' && feedback.options.cuepoint_id in this.cuepoints) {
-			return {
+			let ret = {
 				color: feedback.options.fg,
 				bgcolor: feedback.options.bg
 			};
+			if(feedback.options.use_preview && feedback.options.use_preview === 'image' && this.cuepoints[feedback.options.cuepoint_id].image) {
+				ret.png64 = this.cuepoints[feedback.options.cuepoint_id].image;
+			}
+			return ret;
 		} else if(feedback.type === 'playing' && 'playing' in this.player_status && this.player_status.playing) {
 			return {
 				color: feedback.options.fg,
@@ -928,10 +983,7 @@ class instance extends instance_skel {
 				Cookie: 'sessionID=' + this.session_id
 			},
 			json: true,
-			body: {},
-			rejectUnauthorized: false,
-			requestCert: true,
-			agent: false
+			body: {}
 		}, (error, response, body) => {
 			if(response.statusCode !== 200) {
 				this.debug('warn', 'Could not logout: ' + error);
