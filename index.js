@@ -245,7 +245,7 @@ class instance extends instance_skel {
 				password: this.config.password
 			}
 		}, (error, response, session_content) => {
-			if(!response || !('statusCode' in response) || response.statusCode !== 200) {
+			if(typeof response !== 'object' || !('statusCode' in response) || response.statusCode !== 200) {
 				this.debug('Could not connect, error: ' + error);
 				this.log('warn', 'Could not connect to server.');
 				this.status(this.STATUS_ERROR);
