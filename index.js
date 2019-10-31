@@ -625,8 +625,7 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	action(action) {
-		var cmd = null,
-			opt = action.options;
+		var opt = action.options;
 
 		switch (action.action) {
 			case 'playpause':
@@ -678,7 +677,8 @@ class instance extends instance_skel {
 		this.log('info', 'Setting cuepoint for slot ' + cuepoint_id);
 		this.cuepoints[cuepoint_id] = {
 			channel: this.cur_channel,
-			time: this.cur_time
+			time: this.cur_time,
+			image: this.image
 		};
 
 		this.checkFeedbacks('cuepoint');
@@ -845,7 +845,16 @@ class instance extends instance_skel {
 					},
 					{
 						type: 'dropdown',
-						label: 'Channel ID',
+						label: 'Use preview image if available?',
+						id: 'use_preview',
+						choices: [
+							{ id: '', label: 'No' },
+							{ id: 'image', label: 'Yes' }
+						]
+					},
+					{
+						type: 'dropdown',
+						label: 'Cuepoint Slot',
 						id: 'cuepoint_id',
 						choices: this._get_allowed_cuepoints()
 					}
@@ -933,10 +942,14 @@ class instance extends instance_skel {
 				bgcolor: feedback.options.bg
 			};
 		} else if(feedback.type === 'cuepoint' && feedback.options.cuepoint_id in this.cuepoints) {
-			return {
+			let ret = {
 				color: feedback.options.fg,
 				bgcolor: feedback.options.bg
 			};
+			if(feedback.options.use_preview && feedback.options.use_preview === 'image' && this.cuepoints[feedback.options.cuepoint_id].image) {
+				ret.png64 = this.cuepoints[feedback.options.cuepoint_id].image;
+			}
+			return ret;
 		} else if(feedback.type === 'playing' && 'playing' in this.player_status && this.player_status.playing) {
 			return {
 				color: feedback.options.fg,
