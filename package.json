@@ -8,13 +8,18 @@
   },
   "author": "Justin Osborne",
   "license": "ISC",
-	"keywords": ["Video"],
+  "keywords": [
+    "Video"
+  ],
   "manufacturer": "Haivision",
   "product": "DisplayEngine",
   "shortname": "de",
-	"dependencies": {
+  "dependencies": {
     "socket.io-client": "2.2.0",
     "request": "~2.88.0",
-    "sharp": "~0.22.0"
-	}
+    "sharp": "^0.23.3"
+  },
+  "devDependencies": {
+    "electron-rebuild": "^1.8.8"
+  }
 }

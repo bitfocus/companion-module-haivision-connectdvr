@@ -130,7 +130,7 @@ class instance extends instance_skel {
 
 	/**
 	 * Updates that are received from the server relating to a specific channel
-	 * @param {String} id 
+	 * @param {String} id
 	 * @param {Object} params Raw parameters sent from the server
 	 * @access private
 	 * @since 1.0.0
@@ -358,7 +358,7 @@ class instance extends instance_skel {
 
 	/**
 	 * Setup the actions
-	 * @param {Object} system 
+	 * @param {Object} system
 	 * @access public
 	 * @since 1.0.0
 	 */
@@ -470,7 +470,7 @@ class instance extends instance_skel {
 
 	/**
 	 * Insures that the channel is currently setup on the device
-	 * @param {String} id 
+	 * @param {String} id
 	 * @returns {Boolean}
 	 */
 	_is_valid_channel(id) {
@@ -499,7 +499,7 @@ class instance extends instance_skel {
 
 		this.socket.emit('sendAndCallback2', 'playback:loadChannel', id, init_time, false, false, callback);
 		this.set_live_channel(id);
-		
+
 		return true;
 	}
 
@@ -526,7 +526,7 @@ class instance extends instance_skel {
 
 	/**
 	 * Returns a friendly time in the 00:00:00 format
-	 * @param {Int} seconds 
+	 * @param {Int} seconds
 	 * @access private
 	 * @since 1.0.0
 	 */
@@ -539,7 +539,7 @@ class instance extends instance_skel {
 	/**
 	 * Get new start time based on new time, to insure we have a buffer and aren't trying to start at a negative time
 	 * @param {String} id ID of channel to check
-	 * @param {Float} init_time 
+	 * @param {Float} init_time
 	 * @access private
 	 * @since 1.0.0
 	 */
@@ -664,7 +664,7 @@ class instance extends instance_skel {
 
 	/**
 	 * Set a cuepoint
-	 * @param {String} cuepoint_id 
+	 * @param {String} cuepoint_id
 	 * @access public
 	 * @since 1.1.0
 	 */
@@ -686,7 +686,7 @@ class instance extends instance_skel {
 
 	/**
 	 * Recalls a saved cuepoint
-	 * @param {String} cuepoint_id 
+	 * @param {String} cuepoint_id
 	 * @param {String} play_state How to start the recall (play/pause)
 	 * @access public
 	 * @returns {Boolean|void}
@@ -911,7 +911,7 @@ class instance extends instance_skel {
 	}
 
 	/**
-	 * 
+	 *
 	 * @param {Object} feedback Feedback data to process
 	 * @param {Object} bank The bank this feedback is from
 	 * @returns {Object} Feedback information
@@ -991,7 +991,7 @@ class instance extends instance_skel {
 			} else {
 				this.log('info', 'Session logged out.');
 			}
-		});		
+		});
 	}
 
 	/**
