@@ -1,6 +1,6 @@
 {
 	"name": "haivision-connectdvr",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "Haivision Connect DVR for Companion.",
 	"main": "index.js",
 	"scripts": {
