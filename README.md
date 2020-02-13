@@ -11,8 +11,8 @@ This module has been tested on versions 4.2.0 and 4.3.0 of the Connect DVR softw
 - Live output scrubbing (forward/backwards controls)
 - Setting and recalling cuepoints
 - **Feedbacks**
-  - Channel is active (changing colors)
-  - Channel is currently downloading/streaming (text and color changes)
-  - Output screen is playing/stopped
-  - Cuepoints feedback (if saved), offering a screenshot and/or color changes
-  - Preview of current output
+	- Channel is active (changing colors)
+	- Channel is currently downloading/streaming (text and color changes)
+	- Output screen is playing/stopped
+	- Cuepoints feedback (if saved), offering a screenshot and/or color changes
+	- Preview of current output
