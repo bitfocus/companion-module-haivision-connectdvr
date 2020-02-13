@@ -1,7 +1,7 @@
 {
   "name": "haivision-de",
   "version": "1.0.0",
-  "description": "Haivision DisplayEngine connector for Companion",
+  "description": "Haivision Connect DVR for Companion.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -12,7 +12,7 @@
     "Video"
   ],
   "manufacturer": "Haivision",
-  "product": "DisplayEngine",
+  "product": "Connect DVR",
   "shortname": "de",
   "dependencies": {
     "socket.io-client": "2.2.0",

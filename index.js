@@ -306,7 +306,7 @@ class instance extends instance_skel {
 				id: 'info',
 				width: 12,
 				label: 'Information',
-				value: 'This will connect with Haivision DisplayEngines.'
+				value: 'This will connect with Haivision Connect DVR.'
 			},
 			{
 				type: 'textinput',
