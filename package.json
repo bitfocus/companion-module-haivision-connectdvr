@@ -1,6 +1,6 @@
 {
 	"name": "haivision-connectdvr",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "Haivision Connect DVR for Companion.",
 	"main": "index.js",
 	"scripts": {
@@ -16,10 +16,6 @@
 	"shortname": "de",
 	"dependencies": {
 		"socket.io-client": "2.2.0",
-		"request": "~2.88.0",
 		"sharp": "^0.23.3"
-	},
-	"devDependencies": {
-		"electron-rebuild": "^1.8.8"
 	}
 }
