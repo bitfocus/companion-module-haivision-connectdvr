@@ -882,8 +882,8 @@ class instance extends instance_skel {
 	}
 
 	get_latest_image(force = false) {
-        let cur_time = Date.now();
-        var image_location;
+		let cur_time = Date.now();
+		var image_location;
 
 		// Do not refresh if last refresh was recent
 		if(!force && this._next_preview_refresh > cur_time) {
@@ -891,12 +891,12 @@ class instance extends instance_skel {
 		}
 
 		try {
-            // Version 4.6+ includes the image in the stream
-            if('image_primary' in this.player_status) {
-                image_location = this.player_status.image_primary;
-            } else {
-                image_location = 'assets/img/live_screenshot_primary.jpg';
-            }
+			// Version 4.6+ includes the image in the stream
+			if('image_primary' in this.player_status) {
+				image_location = this.player_status.image_primary;
+			} else {
+				image_location = 'assets/img/live_screenshot_primary.jpg';
+			}
 			const buff = request.get({
 				url: 'https://' + this.config.host + '/' + image_location,
 				encoding: null
