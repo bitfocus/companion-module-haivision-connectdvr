@@ -9,8 +9,8 @@ const sharp = require('sharp');
 
 /**
  * Companion instance for managing Haivision DE devices
- * 
- * @version 1.0.0
+ *
+ * @version 1.0.5
  * @since 1.0.0
  * @author Justin Osborne (<osborne@churchofthehighlands.com>)
  */
@@ -890,8 +890,14 @@ class instance extends instance_skel {
 		}
 
 		try {
+			// Version 4.6+ includes the image in the stream
+			if('image_primary' in this.player_status) {
+				image_location = this.player_status.image_primary;
+			} else {
+				image_location = 'assets/img/live_screenshot_primary.jpg';
+			}
 			const buff = request.get({
-				url: 'https://' + this.config.host + '/assets/img/live_screenshot_primary.jpg',
+				url: 'https://' + this.config.host + '/' + image_location,
 				encoding: null
 			}, (error, resp, body) => {
 				try {
