@@ -882,10 +882,10 @@ class instance extends instance_skel {
 	}
 
 	get_latest_image(force = false) {
-		let cur_time = Date.now();
+		let image_location;
 
 		// Do not refresh if last refresh was recent
-		if(!force && this._next_preview_refresh > cur_time) {
+		if(!force && this._next_preview_refresh > Date.now()) {
 			return;
 		}
 
@@ -894,20 +894,29 @@ class instance extends instance_skel {
 				url: 'https://' + this.config.host + '/assets/img/live_screenshot_primary.jpg',
 				encoding: null
 			}, (error, resp, body) => {
-				sharp(new Buffer(body))
-					.resize(72, 48)
-					.png()
-					.toBuffer((err, buffer) => {
-						this.image = buffer;
-						this._next_preview_refresh = cur_time + this.PREVIEW_REFRESH;
-						this.checkFeedbacks('previewpic');
-					});
+				try {
+					sharp(new Buffer(body))
+						.resize(72, 48)
+						.png()
+						.toBuffer((err, buffer) => {
+							this.setImage(buffer);
+							this.checkFeedbacks('previewpic');
+						});
+				} catch (e) {
+					this.log('warn', 'Error processing preview image.');
+					this.setImage(null);
+				}
 			});
 		} catch (e) {
 			this.log('warn', 'Failed to pull latest image.');
-			this._next_preview_refresh = cur_time + this.PREVIEW_REFRESH;
-			this.image = null;
+			this.setImage(null);
 		}
+	}
+
+	setImage(image) {
+		this.image = image;
+		this._next_preview_refresh = Date.now() + this.PREVIEW_REFRESH;
+		return this;
 	}
 
 	/**
