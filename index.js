@@ -1000,9 +1000,8 @@ class instance extends instance_skel {
 			json: true,
 			body: {}
 		}, (error, response, body) => {
-			if(response.statusCode !== 200) {
+			if(error || !response || !response.statusCode || response.statusCode !== 200) {
 				this.debug('warn', 'Could not logout: ' + error);
-				return;
 			} else {
 				this.log('info', 'Session logged out.');
 			}
