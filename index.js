@@ -734,7 +734,7 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	initFeedbacks() {
-		const channels = this._get_channel_choices();
+		const channels = this._get_channel_choices(true);
 
 		const feedbacks = {
 			streaming: {
