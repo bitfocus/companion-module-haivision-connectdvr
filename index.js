@@ -99,6 +99,7 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	initSocket() {
+		this.status(this.STATUS_WARNING, 'Connecting to socket');
 		this.socket = io('https://' + this.config.host, {
 			path: '/transport/socket.io/',
 			rejectUnauthorized: false,
@@ -235,6 +236,8 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	login(retry = false) {
+		this.status(this.STATUS_WARNING, 'Logging in');
+
 		if(this.reconnecting) {
 			clearTimeout(this.reconnecting);
 			this.reconnecting = null;
