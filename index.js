@@ -202,7 +202,8 @@ class instance extends instance_skel {
 		this.debug('Connection ended, could be due to a stale connection/logout/reboot/network issue.');
 		this.log('warn', 'Connection to server ended. Will attempt to reconnect.');
 		this.status(this.STATUS_ERROR);
-		this.socket.close(); // Possibly a reboot/lost network, we'll need to wait to try another reconnect
+
+		this._endConnection();
 
 		if(retry_immediately) {
 			this.login(true);
@@ -462,6 +463,10 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	play_pause() {
+		if(!this._isConnected()) {
+			return false;
+		}
+
 		this.log('info', 'Sending pause/play command.');
 		this.socket.emit('sendAndCallback2', 'playback:togglePlayState');
 		this.get_latest_image(true);
@@ -482,6 +487,18 @@ class instance extends instance_skel {
 	}
 
 	/**
+	 * Adds an warning to the log if not currently connected
+	 */
+	_isConnected() {
+		if(this.socket === undefined) {
+			this.log('warn', 'Attempted to send command when not connected.');
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * Load a channel to output
 	 * @param {String} id ID of channel to check
 	 * @param {String} init_time Initial time to load with
@@ -489,6 +506,10 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	load_channel(id, init_time, callback = null) {
+		if(!this._isConnected()) {
+			return false;
+		}
+
 		if(!this._is_valid_channel(id)) {
 			return false; // Do not attempt to load an invalid channel
 		}
@@ -599,6 +620,9 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	reboot() {
+		if(!this._isConnected()) {
+			return;
+		}
 		this.status(this.STATUS_ERROR);
 
 		request.put({
@@ -614,7 +638,8 @@ class instance extends instance_skel {
 			this.log('info', 'Ending connecting and rebooting...');
 		});
 
-		this.socket.close();
+		this._endConnection();
+		this.session_id = null;
 		this.keep_login_retry(this.REBOOT_WAIT_TIME);
 	}
 
@@ -882,6 +907,10 @@ class instance extends instance_skel {
 	}
 
 	get_latest_image(force = false) {
+		if(!this._isConnected()) {
+			return;
+		}
+
 		let image_location;
 
 		// Do not refresh if last refresh was recent
@@ -986,11 +1015,11 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	logout() {
+		this._endConnection();
+
 		if(!this.session_id) {
 			return;
 		}
-
-		this.socket.close();
 
 		request.delete({
 			url: 'https://' + this.config.host + '/api/session',
@@ -1006,6 +1035,18 @@ class instance extends instance_skel {
 				this.log('info', 'Session logged out.');
 			}
 		});
+
+		this.session_id = null;
+	}
+
+	/**
+	 * Ends current socket connection
+	 */
+	_endConnection() {
+		if(this.socket !== undefined) {
+			this.socket.close();
+			delete this.socket;
+		}
 	}
 
 	/**
