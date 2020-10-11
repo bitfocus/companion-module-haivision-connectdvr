@@ -74,7 +74,7 @@ class instance extends instance_skel {
 			this.logout();
 		}
 		if(this.config.host && this.config.username && this.config.password) {
-			this.login();
+			this.login(true);
 		}
 	}
 
@@ -88,7 +88,7 @@ class instance extends instance_skel {
 		this.initVariables();
 
 		if(this.config.host) {
-			this.login();
+			this.login(true);
 		}
 	}
 
