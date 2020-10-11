@@ -24,6 +24,7 @@ class instance extends instance_skel {
 		this.defineConst('RECONNECT_TIMEOUT', 10); // Number of seconds to try reconnect
 		this.defineConst('REBOOT_WAIT_TIME', 210); // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
 		this.defineConst('PREVIEW_REFRESH', 2000); // Only pull thumbnail every x millisec
+		this.defineConst('LOGIN_TIMEOUT', 5000); // Timeout for logins
 
 		this.reconnecting = null;
 
@@ -244,7 +245,8 @@ class instance extends instance_skel {
 			body: {
 				username: this.config.username,
 				password: this.config.password
-			}
+			},
+			timeout: this.LOGIN_TIMEOUT
 		}, (error, response, session_content) => {
 			if(typeof response !== 'object' || !('statusCode' in response) || response.statusCode !== 200) {
 				this.debug('Could not connect, error: ' + error);
