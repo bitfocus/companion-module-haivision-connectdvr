@@ -36,6 +36,7 @@ class instance extends instance_skel {
 		this.stream_cache_feedback = null;
 		this.cuepoints = {};
 		this._next_preview_refresh = Date.now();
+		this._login_request = null;
 		this.actions(); // export actions
 
 		return this;
@@ -70,10 +71,11 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	updateConfig(config) {
-		this.config = config;
 		if(this.session_id) {
 			this.logout();
 		}
+
+		this.config = config;
 		if(this.config.host && this.config.username && this.config.password) {
 			this.login(true);
 		}
@@ -242,7 +244,11 @@ class instance extends instance_skel {
 			clearTimeout(this.reconnecting);
 			this.reconnecting = null;
 		}
-		request.post({
+		if(this._login_request !== null) {
+			this._login_request.destory();
+		}
+
+		this._login_request = request.post({
 			url: 'https://' + this.config.host + '/api/session',
 			json: true,
 			body: {
@@ -251,8 +257,9 @@ class instance extends instance_skel {
 			},
 			timeout: this.LOGIN_TIMEOUT
 		}, (error, response, session_content) => {
+			this._login_request = null;
 			if(typeof response !== 'object' || !('statusCode' in response) || response.statusCode !== 200) {
-				this.debug('Could not connect, error: ' + error);
+				this.debug(`Could not connect to ${this.config.host}: ${error}`);
 				this.log('warn', 'Could not connect to server.');
 				this.status(this.STATUS_ERROR);
 				if(retry) {
@@ -1041,6 +1048,7 @@ class instance extends instance_skel {
 			}
 		});
 
+		// Server may be down/unreachable, so don't wait for a response here
 		this.session_id = null;
 	}
 
