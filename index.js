@@ -231,6 +231,17 @@ class instance extends instance_skel {
 		this.reconnecting = setTimeout(this.login.bind(this, true), timeout * 1000);
 	}
 
+	_stopOldLogin() {
+		if(this.reconnecting) {
+			clearTimeout(this.reconnecting);
+			this.reconnecting = null;
+		}
+		if(this._login_request !== null) {
+			this._login_request.abort();
+			this._login_request = null;
+		}
+	}
+
 	/**
 	 * Login to the device
 	 * @param {Boolean} retry Set to true to continue retrying logins (only after a good first connection)
@@ -240,13 +251,7 @@ class instance extends instance_skel {
 	login(retry = false) {
 		this.status(this.STATUS_WARNING, 'Logging in');
 
-		if(this.reconnecting) {
-			clearTimeout(this.reconnecting);
-			this.reconnecting = null;
-		}
-		if(this._login_request !== null) {
-			this._login_request.destory();
-		}
+		this._stopOldLogin();
 
 		this._login_request = request.post({
 			url: 'https://' + this.config.host + '/api/session',
@@ -257,6 +262,9 @@ class instance extends instance_skel {
 			},
 			timeout: this.LOGIN_TIMEOUT
 		}, (error, response, session_content) => {
+			if(this._login_request === null) {
+				return;
+			}
 			this._login_request = null;
 			if(typeof response !== 'object' || !('statusCode' in response) || response.statusCode !== 200) {
 				this.debug(`Could not connect to ${this.config.host}: ${error}`);
@@ -1067,6 +1075,7 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	destroy() {
+		this._stopOldLogin();
 		this.logout();
 	}
 }
