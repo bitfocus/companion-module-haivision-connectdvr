@@ -950,7 +950,7 @@ class instance extends instance_skel {
 				encoding: null
 			}, (error, resp, body) => {
 				try {
-					sharp(new Buffer(body))
+					sharp(Buffer.from(body))
 						.resize(72, 48)
 						.png()
 						.toBuffer((err, buffer) => {
