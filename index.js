@@ -21,9 +21,10 @@ class instance extends instance_skel {
 		this.defineConst('MIN_BUFFER_TIME', 25);
 		this.defineConst('USE_STREAM_CACHE', true); // Use cloud_cache instead of isLive param
 		this.defineConst('CACHE_FEEDBACK_TIME', 30000); // Check for caching stream every 30 seconds
-		this.defineConst('RECONNECT_TIMEOUT', 60); // Number of seconds to try reconnect
+		this.defineConst('RECONNECT_TIMEOUT', 10); // Number of seconds to try reconnect
 		this.defineConst('REBOOT_WAIT_TIME', 210); // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
 		this.defineConst('PREVIEW_REFRESH', 2000); // Only pull thumbnail every x millisec
+		this.defineConst('LOGIN_TIMEOUT', 5000); // Timeout for logins
 
 		this.reconnecting = null;
 
@@ -35,6 +36,7 @@ class instance extends instance_skel {
 		this.stream_cache_feedback = null;
 		this.cuepoints = {};
 		this._next_preview_refresh = Date.now();
+		this._login_request = null;
 		this.actions(); // export actions
 
 		return this;
@@ -69,12 +71,13 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	updateConfig(config) {
-		this.config = config;
 		if(this.session_id) {
 			this.logout();
 		}
+
+		this.config = config;
 		if(this.config.host && this.config.username && this.config.password) {
-			this.login();
+			this.login(true);
 		}
 	}
 
@@ -88,7 +91,7 @@ class instance extends instance_skel {
 		this.initVariables();
 
 		if(this.config.host) {
-			this.login();
+			this.login(true);
 		}
 	}
 
@@ -98,6 +101,7 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	initSocket() {
+		this.status(this.STATUS_WARNING, 'Connecting to socket');
 		this.socket = io('https://' + this.config.host, {
 			path: '/transport/socket.io/',
 			rejectUnauthorized: false,
@@ -202,7 +206,8 @@ class instance extends instance_skel {
 		this.debug('Connection ended, could be due to a stale connection/logout/reboot/network issue.');
 		this.log('warn', 'Connection to server ended. Will attempt to reconnect.');
 		this.status(this.STATUS_ERROR);
-		this.socket.close(); // Possibly a reboot/lost network, we'll need to wait to try another reconnect
+
+		this._endConnection();
 
 		if(retry_immediately) {
 			this.login(true);
@@ -226,6 +231,17 @@ class instance extends instance_skel {
 		this.reconnecting = setTimeout(this.login.bind(this, true), timeout * 1000);
 	}
 
+	_stopOldLogin() {
+		if(this.reconnecting) {
+			clearTimeout(this.reconnecting);
+			this.reconnecting = null;
+		}
+		if(this._login_request !== null) {
+			this._login_request.abort();
+			this._login_request = null;
+		}
+	}
+
 	/**
 	 * Login to the device
 	 * @param {Boolean} retry Set to true to continue retrying logins (only after a good first connection)
@@ -233,20 +249,25 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	login(retry = false) {
-		if(this.reconnecting) {
-			clearTimeout(this.reconnecting);
-			this.reconnecting = null;
-		}
-		request.post({
+		this.status(this.STATUS_WARNING, 'Logging in');
+
+		this._stopOldLogin();
+
+		this._login_request = request.post({
 			url: 'https://' + this.config.host + '/api/session',
 			json: true,
 			body: {
 				username: this.config.username,
 				password: this.config.password
-			}
+			},
+			timeout: this.LOGIN_TIMEOUT
 		}, (error, response, session_content) => {
+			if(this._login_request === null) {
+				return;
+			}
+			this._login_request = null;
 			if(typeof response !== 'object' || !('statusCode' in response) || response.statusCode !== 200) {
-				this.debug('Could not connect, error: ' + error);
+				this.debug(`Could not connect to ${this.config.host}: ${error}`);
 				this.log('warn', 'Could not connect to server.');
 				this.status(this.STATUS_ERROR);
 				if(retry) {
@@ -462,6 +483,10 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	play_pause() {
+		if(!this._isConnected()) {
+			return false;
+		}
+
 		this.log('info', 'Sending pause/play command.');
 		this.socket.emit('sendAndCallback2', 'playback:togglePlayState');
 		this.get_latest_image(true);
@@ -482,6 +507,18 @@ class instance extends instance_skel {
 	}
 
 	/**
+	 * Adds an warning to the log if not currently connected
+	 */
+	_isConnected() {
+		if(this.socket === undefined) {
+			this.log('warn', 'Attempted to send command when not connected.');
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * Load a channel to output
 	 * @param {String} id ID of channel to check
 	 * @param {String} init_time Initial time to load with
@@ -489,6 +526,10 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	load_channel(id, init_time, callback = null) {
+		if(!this._isConnected()) {
+			return false;
+		}
+
 		if(!this._is_valid_channel(id)) {
 			return false; // Do not attempt to load an invalid channel
 		}
@@ -599,6 +640,9 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	reboot() {
+		if(!this._isConnected()) {
+			return;
+		}
 		this.status(this.STATUS_ERROR);
 
 		request.put({
@@ -614,7 +658,8 @@ class instance extends instance_skel {
 			this.log('info', 'Ending connecting and rebooting...');
 		});
 
-		this.socket.close();
+		this._endConnection();
+		this.session_id = null;
 		this.keep_login_retry(this.REBOOT_WAIT_TIME);
 	}
 
@@ -882,6 +927,10 @@ class instance extends instance_skel {
 	}
 
 	get_latest_image(force = false) {
+		if(!this._isConnected()) {
+			return;
+		}
+
 		let image_location;
 
 		// Do not refresh if last refresh was recent
@@ -901,7 +950,7 @@ class instance extends instance_skel {
 				encoding: null
 			}, (error, resp, body) => {
 				try {
-					sharp(new Buffer(body))
+					sharp(Buffer.from(body))
 						.resize(72, 48)
 						.png()
 						.toBuffer((err, buffer) => {
@@ -986,11 +1035,11 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	logout() {
+		this._endConnection();
+
 		if(!this.session_id) {
 			return;
 		}
-
-		this.socket.close();
 
 		request.delete({
 			url: 'https://' + this.config.host + '/api/session',
@@ -1006,6 +1055,19 @@ class instance extends instance_skel {
 				this.log('info', 'Session logged out.');
 			}
 		});
+
+		// Server may be down/unreachable, so don't wait for a response here
+		this.session_id = null;
+	}
+
+	/**
+	 * Ends current socket connection
+	 */
+	_endConnection() {
+		if(this.socket !== undefined) {
+			this.socket.close();
+			delete this.socket;
+		}
 	}
 
 	/**
@@ -1013,6 +1075,7 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	destroy() {
+		this._stopOldLogin();
 		this.logout();
 	}
 }
