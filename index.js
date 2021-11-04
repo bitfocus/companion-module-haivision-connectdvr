@@ -538,7 +538,7 @@ class instance extends instance_skel {
 
 		this.log('info', 'Loading channel ' + id + ' at ' + init_time + '.');
 
-		this.socket.emit('sendAndCallback2', 'playback:loadChannel', id, init_time, false, false, callback);
+		this.socket.emit('sendAndCallback2', 'playback:loadChannel', id, init_time, false, -1, callback);
 		this.set_live_channel(id);
 
 		return true;
