@@ -42,6 +42,21 @@ class instance extends instance_skel {
 		return this;
 	}
 
+	static GetUpgradeScripts() {
+		return [
+			instance_skel.CreateConvertToBooleanFeedbackUpgradeScript({
+				'streaming': {
+					'bg': 'bgcolor',
+					'fg': 'color',
+					'text': 'text'
+				},
+				'active': true,
+				'playing': true,
+				'stopped': true,
+			}),
+		]
+	}
+
 	/**
 	 * Initialize the available variables. (These are listed in the module config UI)
 	 * @access public
@@ -783,27 +798,10 @@ class instance extends instance_skel {
 
 		const feedbacks = {
 			streaming: {
+				type: 'boolean',
 				label: 'Channel is Streaming',
 				description: 'Indicates this channel is currently live streaming.',
 				options: [
-					{
-						type: 'colorpicker',
-						label: 'Foreground color',
-						id: 'fg',
-						default: this.rgb(255,255,255)
-					},
-					{
-						type: 'colorpicker',
-						label: 'Background color',
-						id: 'bg',
-						default: this.rgb(255,255,255)
-					},
-					{
-						type: 'textinput',
-						label: 'Text',
-						id: 'text',
-						default: ''
-					},
 					{
 						type: 'dropdown',
 						label: 'Channel ID',
@@ -813,21 +811,14 @@ class instance extends instance_skel {
 				]
 			},
 			active: {
+				type: 'boolean',
 				label: 'Channel is Active',
 				description: 'Indicates this channel is currently active (playing/paused).',
+				style: {
+					color: this.rgb(255,255,255),
+					bgcolor: this.rgb(51, 102, 0)
+				},
 				options: [
-					{
-						type: 'colorpicker',
-						label: 'Foreground color',
-						id: 'fg',
-						default: this.rgb(255,255,255)
-					},
-					{
-						type: 'colorpicker',
-						label: 'Background color',
-						id: 'bg',
-						default: this.rgb(51, 102, 0)
-					},
 					{
 						type: 'dropdown',
 						label: 'Channel ID',
@@ -837,40 +828,22 @@ class instance extends instance_skel {
 				]
 			},
 			playing: {
+				type: 'boolean',
 				label: 'Output playing',
 				description: 'Indicates a channel is currently playing.',
-				options: [
-					{
-						type: 'colorpicker',
-						label: 'Foreground color',
-						id: 'fg',
-						default: this.rgb(255,255,255)
-					},
-					{
-						type: 'colorpicker',
-						label: 'Background color',
-						id: 'bg',
-						default: this.rgb(51, 102, 0)
-					}
-				]
+				style: {
+					color: this.rgb(255,255,255),
+					bgcolor: this.rgb(51, 102, 0)
+				},
 			},
 			stopped: {
+				type: 'boolean',
 				label: 'Output stopped',
 				description: 'Indicates a channel is currently stopped.',
-				options: [
-					{
-						type: 'colorpicker',
-						label: 'Foreground color',
-						id: 'fg',
-						default: this.rgb(255,255,255)
-					},
-					{
-						type: 'colorpicker',
-						label: 'Background color',
-						id: 'bg',
-						default: this.rgb(128, 0, 0)
-					}
-				]
+				style: {
+					color: this.rgb(255,255,255),
+					bgcolor: this.rgb(128, 0, 0)
+				},
 			},
 			cuepoint: {
 				label: 'Cue Point Slot Saved',
