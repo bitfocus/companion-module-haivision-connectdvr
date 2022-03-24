@@ -398,8 +398,8 @@ class instance extends instance_skel {
 	 * @access public
 	 * @since 1.0.0
 	 */
-	actions(system) {
-		this.system.emit('instance_actions', this.id, {
+	actions() {
+		this.setActions({
 			'playpause': { label: 'Play/Pause Toggle'},
 			'channel': {
 				label: 'Load Channel',

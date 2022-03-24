@@ -1,6 +1,6 @@
 {
 	"name": "haivision-connectdvr",
-	"version": "1.1.1",
+	"version": "1.1.3",
 	"description": "Haivision Connect DVR for Companion.",
 	"main": "index.js",
 	"scripts": {
@@ -13,5 +13,14 @@
 	],
 	"manufacturer": "Haivision",
 	"product": "Connect DVR",
-	"shortname": "de"
+	"shortname": "de",
+	"homepage": "https://github.com/bitfocus/companion-module-haivision-connectdvr#readme",
+	"bugs": {
+		"url": "https://github.com/bitfocus/companion-module-haivision-connectdvr/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/bitfocus/companion-module-haivision-connectdvr.git"
+	},
+	"api_version": "1.0.0"
 }
