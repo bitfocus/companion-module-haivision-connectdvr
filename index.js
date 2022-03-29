@@ -155,6 +155,9 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	_channel_updates(id, params) {
+		if('duration' in params && this.channels[id].duration !== params.duration) {
+			params.last_duration_change = new Date();
+		}
 		this.channels[id] = {...this.channels[id], ...params};
 
 		// If current channel is playing, update the duration variable
@@ -162,13 +165,9 @@ class instance extends instance_skel {
 			this.setVariable('duration', this._userFriendlyTime(this.channels[this.cur_channel].duration));
 		}
 
-		if('isLive' in params && !this.USE_STREAM_CACHE) {
-			this.checkFeedbacks('streaming');
-		}
-
+		// cloud_duration is sent often for all channels, so we'll use it to validate that the duration is increasing
 		if('cloud_duration' in params && params['cloud_duration'] > 0) {
-			this.channels[id].cloud_date = new Date(); // Last time the cloud was updated
-			if(this.USE_STREAM_CACHE) this.checkFeedbacks('streaming');
+			this.checkFeedbacks('streaming');
 		}
 	}
 
@@ -567,12 +566,8 @@ class instance extends instance_skel {
 	 */
 	is_live(id) {
 		if(this._is_valid_channel(id)) {
-			if(!this.USE_STREAM_CACHE) {
-				return this.channels[id].isLive;
-			}
-
 			// Cloud updates should be sent every 5 seconds or so
-			if('cloud_date' in this.channels[id] && (new Date - this.channels[id].cloud_date) <= 15000) {
+			if('last_duration_change' in this.channels[id] && (new Date - this.channels[id].last_duration_change) <= 15000) {
 				return true;
 			}
 		}
@@ -801,6 +796,10 @@ class instance extends instance_skel {
 				type: 'boolean',
 				label: 'Channel is Streaming',
 				description: 'Indicates this channel is currently live streaming.',
+				style: {
+					color: this.rgb(255,255,255),
+					bgcolor: this.rgb(51, 102, 0)
+				},
 				options: [
 					{
 						type: 'dropdown',
@@ -808,7 +807,8 @@ class instance extends instance_skel {
 						id: 'channel',
 						choices: channels
 					}
-				]
+				],
+				callback: (feedback) => this.is_live(feedback.options.channel)
 			},
 			active: {
 				type: 'boolean',
@@ -825,7 +825,8 @@ class instance extends instance_skel {
 						id: 'channel',
 						choices: channels
 					}
-				]
+				],
+				callback: (feedback) => feedback.options.channel == this.cur_channel
 			},
 			playing: {
 				type: 'boolean',
@@ -835,6 +836,7 @@ class instance extends instance_skel {
 					color: this.rgb(255,255,255),
 					bgcolor: this.rgb(51, 102, 0)
 				},
+				callback: (feedback) => 'playing' in this.player_status && this.player_status.playing
 			},
 			stopped: {
 				type: 'boolean',
@@ -844,6 +846,7 @@ class instance extends instance_skel {
 					color: this.rgb(255,255,255),
 					bgcolor: this.rgb(128, 0, 0)
 				},
+				callback: (feedback) => 'playing' in this.player_status && !this.player_status.playing
 			},
 			cuepoint: {
 				label: 'Cue Point Slot Saved',
@@ -876,11 +879,36 @@ class instance extends instance_skel {
 						id: 'cuepoint_id',
 						choices: this._get_allowed_cuepoints()
 					}
-				]
+				],
+				callback: (feedback) => {
+					if(feedback.options.cuepoint_id in this.cuepoints) {
+						let ret = {
+							color: feedback.options.fg,
+							bgcolor: feedback.options.bg
+						};
+						if(feedback.options.use_preview && feedback.options.use_preview === 'image' && this.cuepoints[feedback.options.cuepoint_id].image) {
+							ret.png64 = this.cuepoints[feedback.options.cuepoint_id].image;
+						}
+
+						return ret;
+					}
+
+					return {};
+				}
 			},
 			previewpic: {
+				type: 'advanced',
 				label: 'Preview',
-				description: 'Preview output image'
+				description: 'Preview output image',
+				callback: (feedback) => {
+					if(this.image) {
+						return {
+							png64: this.image
+						};
+					} else {
+						return {};
+					}
+				}
 			}
 		};
 
@@ -888,14 +916,6 @@ class instance extends instance_skel {
 
 		for(let feedback in feedbacks) {
 			this.checkFeedbacks(feedback);
-		}
-
-		if(this.USE_STREAM_CACHE) {
-			if(this.stream_cache_feedback) {
-				clearInterval(this.stream_cache_feedback);
-			}
-
-			this.stream_cache_feedback = setInterval(this.checkFeedbacks.bind(this, 'streaming'), this.CACHE_FEEDBACK_TIME);
 		}
 	}
 
@@ -945,61 +965,6 @@ class instance extends instance_skel {
 		this.image = image;
 		this._next_preview_refresh = Date.now() + this.PREVIEW_REFRESH;
 		return this;
-	}
-
-	/**
-	 *
-	 * @param {Object} feedback Feedback data to process
-	 * @param {Object} bank The bank this feedback is from
-	 * @returns {Object} Feedback information
-	 * @access public
-	 * @since 1.0.0
-	 */
-	feedback(feedback, bank) {
-		if(feedback.type === 'previewpic') {
-			if(this.image) {
-				return {
-					png64: this.image
-				}
-			}
-		} else if(feedback.type === 'streaming' && this.is_live(feedback.options.channel)) {
-			let ret = {};
-			if(feedback.options.fg !== 16777215 || feedback.options.bg !== 16777215) {
-				ret.color = feedback.options.fg;
-				ret.bgcolor = feedback.options.bg;
-			}
-			if('text' in feedback.options && feedback.options.text !== '') {
-				ret.text = feedback.options.text;
-			}
-
-			return ret;
-		} else if(feedback.type === 'active' && feedback.options.channel == this.cur_channel) {
-			return {
-				color: feedback.options.fg,
-				bgcolor: feedback.options.bg
-			};
-		} else if(feedback.type === 'cuepoint' && feedback.options.cuepoint_id in this.cuepoints) {
-			let ret = {
-				color: feedback.options.fg,
-				bgcolor: feedback.options.bg
-			};
-			if(feedback.options.use_preview && feedback.options.use_preview === 'image' && this.cuepoints[feedback.options.cuepoint_id].image) {
-				ret.png64 = this.cuepoints[feedback.options.cuepoint_id].image;
-			}
-			return ret;
-		} else if(feedback.type === 'playing' && 'playing' in this.player_status && this.player_status.playing) {
-			return {
-				color: feedback.options.fg,
-				bgcolor: feedback.options.bg
-			};
-		} else if(feedback.type === 'stopped' && 'playing' in this.player_status && !this.player_status.playing) {
-			return {
-				color: feedback.options.fg,
-				bgcolor: feedback.options.bg
-			};
-		}
-
-		return {};
 	}
 
 	/**
