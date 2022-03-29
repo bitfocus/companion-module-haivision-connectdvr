@@ -23,7 +23,7 @@ class instance extends instance_skel {
 		this.defineConst('CACHE_FEEDBACK_TIME', 30000); // Check for caching stream every 30 seconds
 		this.defineConst('RECONNECT_TIMEOUT', 10); // Number of seconds to try reconnect
 		this.defineConst('REBOOT_WAIT_TIME', 210); // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
-		this.defineConst('PREVIEW_REFRESH', 2000); // Only pull thumbnail every x millisec
+		this.defineConst('PREVIEW_REFRESH', 1500); // Only pull thumbnail every x millisec
 		this.defineConst('LOGIN_TIMEOUT', 5000); // Timeout for logins
 
 		this.reconnecting = null;
@@ -35,7 +35,7 @@ class instance extends instance_skel {
 		this.cur_time = null;
 		this.stream_cache_feedback = null;
 		this.cuepoints = {};
-		this._next_preview_refresh = Date.now();
+		this._image_refresh = null;
 		this._login_request = null;
 		this.actions(); // export actions
 
@@ -75,8 +75,8 @@ class instance extends instance_skel {
 		];
 
 		this.setVariableDefinitions(variables);
-		this.setVariable('time', 'Not playing');
-		this.setVariable('duration', 'Not playing');
+		this.setVariable('time', '00:00:00');
+		this.setVariable('duration', '00:00:00');
 	}
 
 	/**
@@ -191,6 +191,7 @@ class instance extends instance_skel {
 			this.set_live_channel(args.active_channel_id);
 		}
 		if('playing' in args) {
+			this.get_latest_image();
 			this.checkFeedbacks('playing');
 			this.checkFeedbacks('stopped');
 		}
@@ -205,7 +206,6 @@ class instance extends instance_skel {
 	_set_cur_time(time) {
 		this.cur_time = parseFloat(time);
 		this.setVariable('time', this._userFriendlyTime(this.cur_time));
-		this.get_latest_image();
 
 		return this.cur_time;
 	}
@@ -309,12 +309,16 @@ class instance extends instance_skel {
 		if('active_channel_id' in data.player) {
 			this.set_live_channel(data.player['active_channel_id']);
 		}
+		if('time' in data.player) {
+			this._set_cur_time(data.player['time'])
+		}
 		data.channel.forEach((id) => {
 			this.channels[id] = data[id];
 		});
 
 		this.actions();
 		this.initFeedbacks();
+		this.get_latest_image();
 	}
 
 	/**
@@ -341,7 +345,7 @@ class instance extends instance_skel {
 				id: 'info',
 				width: 12,
 				label: 'Information',
-				value: 'This will connect with Haivision Connect DVR.'
+				value: 'This will connect with Haivision Connect DVR. If you are using the operator account you will not be able to use the reboot functionality.'
 			},
 			{
 				type: 'textinput',
@@ -354,7 +358,7 @@ class instance extends instance_skel {
 				type: 'textinput',
 				id: 'username',
 				label: 'Username',
-				value: 'haiadmin',
+				value: 'haioperator',
 				width: 6
 			},
 			{
@@ -503,7 +507,6 @@ class instance extends instance_skel {
 
 		this.log('info', 'Sending pause/play command.');
 		this.socket.emit('sendAndCallback2', 'playback:togglePlayState');
-		this.get_latest_image(true);
 		return true;
 	}
 
@@ -764,9 +767,7 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	play() {
-		if('playing' in this.player_status && (this.player_status.playing || !this.cur_channel)) {
-			return; // Already playing
-		} else {
+		if(!this.is_playing() && this.cur_channel !== null) {
 			this.play_pause();
 		}
 	}
@@ -777,11 +778,13 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	pause() {
-		if('playing' in this.player_status && (!this.player_status.playing || !this.cur_channel)) {
-			return; // Already playing
-		} else {
+		if(this.is_playing() && this.cur_channel !== null) {
 			this.play_pause();
 		}
+	}
+
+	is_playing() {
+		return 'playing' in this.player_status && this.player_status.playing;
 	}
 
 	/**
@@ -836,7 +839,7 @@ class instance extends instance_skel {
 					color: this.rgb(255,255,255),
 					bgcolor: this.rgb(51, 102, 0)
 				},
-				callback: (feedback) => 'playing' in this.player_status && this.player_status.playing
+				callback: (feedback) => this.is_playing()
 			},
 			stopped: {
 				type: 'boolean',
@@ -846,7 +849,7 @@ class instance extends instance_skel {
 					color: this.rgb(255,255,255),
 					bgcolor: this.rgb(128, 0, 0)
 				},
-				callback: (feedback) => 'playing' in this.player_status && !this.player_status.playing
+				callback: (feedback) => !this.is_playing()
 			},
 			cuepoint: {
 				label: 'Cue Point Slot Saved',
@@ -919,17 +922,15 @@ class instance extends instance_skel {
 		}
 	}
 
-	get_latest_image(force = false) {
+	get_latest_image() {
+		if(this._image_refresh) {
+			clearTimeout(this._image_refresh);
+		}
 		if(!this._isConnected()) {
 			return;
 		}
 
 		let image_location;
-
-		// Do not refresh if last refresh was recent
-		if(!force && this._next_preview_refresh > Date.now()) {
-			return;
-		}
 
 		try {
 			// Version 4.6+ includes the image in the stream
@@ -963,7 +964,11 @@ class instance extends instance_skel {
 
 	setImage(image) {
 		this.image = image;
-		this._next_preview_refresh = Date.now() + this.PREVIEW_REFRESH;
+
+		if(this.is_playing()) {
+			this._image_refresh = setTimeout(this.get_latest_image.bind(this), this.PREVIEW_REFRESH);
+		}
+
 		return this;
 	}
 
@@ -1002,6 +1007,10 @@ class instance extends instance_skel {
 	 * Ends current socket connection
 	 */
 	_endConnection() {
+		if(this._image_refresh) {
+			clearTimeout(this._image_refresh);
+		}
+
 		if(this.socket !== undefined) {
 			this.socket.close();
 			delete this.socket;
