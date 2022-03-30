@@ -19,8 +19,6 @@ class instance extends instance_skel {
 		super(system, id, config);
 
 		this.defineConst('MIN_BUFFER_TIME', 25);
-		this.defineConst('USE_STREAM_CACHE', true); // Use cloud_cache instead of isLive param
-		this.defineConst('CACHE_FEEDBACK_TIME', 30000); // Check for caching stream every 30 seconds
 		this.defineConst('RECONNECT_TIMEOUT', 10); // Number of seconds to try reconnect
 		this.defineConst('REBOOT_WAIT_TIME', 210); // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
 		this.defineConst('PREVIEW_REFRESH', 1500); // Only pull thumbnail every x millisec
