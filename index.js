@@ -71,12 +71,17 @@ class instance extends instance_skel {
 			{
 				label: 'Current duration of playing video.',
 				name:  'duration'
+			},
+			{
+				label: 'Remaining time in playing video.',
+				name:  'remaining'
 			}
 		];
 
 		this.setVariableDefinitions(variables);
 		this.setVariable('time', '00:00:00');
 		this.setVariable('duration', '00:00:00');
+		this.setVariable('remaining', '00:00:00');
 	}
 
 	/**
@@ -163,6 +168,9 @@ class instance extends instance_skel {
 		// If current channel is playing, update the duration variable
 		if(id === this.cur_channel) {
 			this.setVariable('duration', this._userFriendlyTime(this.channels[this.cur_channel].duration));
+			if('time' in this.player_status) {
+				this.setVariable('remaining', this._userFriendlyTime(this.channels[this.cur_channel].duration - this.player_status.time));
+			}
 		}
 
 		// cloud_duration is sent often for all channels, so we'll use it to validate that the duration is increasing
