@@ -19,11 +19,9 @@ class instance extends instance_skel {
 		super(system, id, config);
 
 		this.defineConst('MIN_BUFFER_TIME', 25);
-		this.defineConst('USE_STREAM_CACHE', true); // Use cloud_cache instead of isLive param
-		this.defineConst('CACHE_FEEDBACK_TIME', 30000); // Check for caching stream every 30 seconds
 		this.defineConst('RECONNECT_TIMEOUT', 10); // Number of seconds to try reconnect
 		this.defineConst('REBOOT_WAIT_TIME', 210); // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
-		this.defineConst('PREVIEW_REFRESH', 2000); // Only pull thumbnail every x millisec
+		this.defineConst('PREVIEW_REFRESH', 1500); // Only pull thumbnail every x millisec
 		this.defineConst('LOGIN_TIMEOUT', 5000); // Timeout for logins
 
 		this.reconnecting = null;
@@ -35,7 +33,7 @@ class instance extends instance_skel {
 		this.cur_time = null;
 		this.stream_cache_feedback = null;
 		this.cuepoints = {};
-		this._next_preview_refresh = Date.now();
+		this._image_refresh = null;
 		this._login_request = null;
 		this.actions(); // export actions
 
@@ -71,12 +69,17 @@ class instance extends instance_skel {
 			{
 				label: 'Current duration of playing video.',
 				name:  'duration'
+			},
+			{
+				label: 'Remaining time in playing video.',
+				name:  'remaining'
 			}
 		];
 
 		this.setVariableDefinitions(variables);
-		this.setVariable('time', 'Not playing');
-		this.setVariable('duration', 'Not playing');
+		this.setVariable('time', '00:00:00');
+		this.setVariable('duration', '00:00:00');
+		this.setVariable('remaining', '00:00:00');
 	}
 
 	/**
@@ -155,20 +158,22 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	_channel_updates(id, params) {
+		if('duration' in params && this.channels[id].duration !== params.duration) {
+			params.last_duration_change = new Date();
+		}
 		this.channels[id] = {...this.channels[id], ...params};
 
 		// If current channel is playing, update the duration variable
 		if(id === this.cur_channel) {
 			this.setVariable('duration', this._userFriendlyTime(this.channels[this.cur_channel].duration));
+			if('time' in this.player_status) {
+				this.setVariable('remaining', this._userFriendlyTime(this.channels[this.cur_channel].duration - this.player_status.time));
+			}
 		}
 
-		if('isLive' in params && !this.USE_STREAM_CACHE) {
-			this.checkFeedbacks('streaming');
-		}
-
+		// cloud_duration is sent often for all channels, so we'll use it to validate that the duration is increasing
 		if('cloud_duration' in params && params['cloud_duration'] > 0) {
-			this.channels[id].cloud_date = new Date(); // Last time the cloud was updated
-			if(this.USE_STREAM_CACHE) this.checkFeedbacks('streaming');
+			this.checkFeedbacks('streaming');
 		}
 	}
 
@@ -192,6 +197,7 @@ class instance extends instance_skel {
 			this.set_live_channel(args.active_channel_id);
 		}
 		if('playing' in args) {
+			this.get_latest_image();
 			this.checkFeedbacks('playing');
 			this.checkFeedbacks('stopped');
 		}
@@ -206,7 +212,6 @@ class instance extends instance_skel {
 	_set_cur_time(time) {
 		this.cur_time = parseFloat(time);
 		this.setVariable('time', this._userFriendlyTime(this.cur_time));
-		this.get_latest_image();
 
 		return this.cur_time;
 	}
@@ -310,12 +315,16 @@ class instance extends instance_skel {
 		if('active_channel_id' in data.player) {
 			this.set_live_channel(data.player['active_channel_id']);
 		}
+		if('time' in data.player) {
+			this._set_cur_time(data.player['time'])
+		}
 		data.channel.forEach((id) => {
 			this.channels[id] = data[id];
 		});
 
 		this.actions();
 		this.initFeedbacks();
+		this.get_latest_image();
 	}
 
 	/**
@@ -342,7 +351,7 @@ class instance extends instance_skel {
 				id: 'info',
 				width: 12,
 				label: 'Information',
-				value: 'This will connect with Haivision Connect DVR.'
+				value: 'This will connect with Haivision Connect DVR. If you are using the operator account you will not be able to use the reboot functionality.'
 			},
 			{
 				type: 'textinput',
@@ -355,7 +364,7 @@ class instance extends instance_skel {
 				type: 'textinput',
 				id: 'username',
 				label: 'Username',
-				value: 'haiadmin',
+				value: 'haioperator',
 				width: 6
 			},
 			{
@@ -504,7 +513,6 @@ class instance extends instance_skel {
 
 		this.log('info', 'Sending pause/play command.');
 		this.socket.emit('sendAndCallback2', 'playback:togglePlayState');
-		this.get_latest_image(true);
 		return true;
 	}
 
@@ -567,12 +575,8 @@ class instance extends instance_skel {
 	 */
 	is_live(id) {
 		if(this._is_valid_channel(id)) {
-			if(!this.USE_STREAM_CACHE) {
-				return this.channels[id].isLive;
-			}
-
 			// Cloud updates should be sent every 5 seconds or so
-			if('cloud_date' in this.channels[id] && (new Date - this.channels[id].cloud_date) <= 15000) {
+			if('last_duration_change' in this.channels[id] && (new Date - this.channels[id].last_duration_change) <= 15000) {
 				return true;
 			}
 		}
@@ -769,9 +773,7 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	play() {
-		if('playing' in this.player_status && (this.player_status.playing || !this.cur_channel)) {
-			return; // Already playing
-		} else {
+		if(!this.is_playing() && this.cur_channel !== null) {
 			this.play_pause();
 		}
 	}
@@ -782,11 +784,13 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	pause() {
-		if('playing' in this.player_status && (!this.player_status.playing || !this.cur_channel)) {
-			return; // Already playing
-		} else {
+		if(this.is_playing() && this.cur_channel !== null) {
 			this.play_pause();
 		}
+	}
+
+	is_playing() {
+		return 'playing' in this.player_status && this.player_status.playing;
 	}
 
 	/**
@@ -801,6 +805,10 @@ class instance extends instance_skel {
 				type: 'boolean',
 				label: 'Channel is Streaming',
 				description: 'Indicates this channel is currently live streaming.',
+				style: {
+					color: this.rgb(255,255,255),
+					bgcolor: this.rgb(51, 102, 0)
+				},
 				options: [
 					{
 						type: 'dropdown',
@@ -808,7 +816,8 @@ class instance extends instance_skel {
 						id: 'channel',
 						choices: channels
 					}
-				]
+				],
+				callback: (feedback) => this.is_live(feedback.options.channel)
 			},
 			active: {
 				type: 'boolean',
@@ -825,7 +834,8 @@ class instance extends instance_skel {
 						id: 'channel',
 						choices: channels
 					}
-				]
+				],
+				callback: (feedback) => feedback.options.channel == this.cur_channel
 			},
 			playing: {
 				type: 'boolean',
@@ -835,6 +845,7 @@ class instance extends instance_skel {
 					color: this.rgb(255,255,255),
 					bgcolor: this.rgb(51, 102, 0)
 				},
+				callback: (feedback) => this.is_playing()
 			},
 			stopped: {
 				type: 'boolean',
@@ -844,6 +855,7 @@ class instance extends instance_skel {
 					color: this.rgb(255,255,255),
 					bgcolor: this.rgb(128, 0, 0)
 				},
+				callback: (feedback) => !this.is_playing()
 			},
 			cuepoint: {
 				label: 'Cue Point Slot Saved',
@@ -876,11 +888,36 @@ class instance extends instance_skel {
 						id: 'cuepoint_id',
 						choices: this._get_allowed_cuepoints()
 					}
-				]
+				],
+				callback: (feedback) => {
+					if(feedback.options.cuepoint_id in this.cuepoints) {
+						let ret = {
+							color: feedback.options.fg,
+							bgcolor: feedback.options.bg
+						};
+						if(feedback.options.use_preview && feedback.options.use_preview === 'image' && this.cuepoints[feedback.options.cuepoint_id].image) {
+							ret.png64 = this.cuepoints[feedback.options.cuepoint_id].image;
+						}
+
+						return ret;
+					}
+
+					return {};
+				}
 			},
 			previewpic: {
+				type: 'advanced',
 				label: 'Preview',
-				description: 'Preview output image'
+				description: 'Preview output image',
+				callback: (feedback) => {
+					if(this.image) {
+						return {
+							png64: this.image
+						};
+					} else {
+						return {};
+					}
+				}
 			}
 		};
 
@@ -889,27 +926,17 @@ class instance extends instance_skel {
 		for(let feedback in feedbacks) {
 			this.checkFeedbacks(feedback);
 		}
-
-		if(this.USE_STREAM_CACHE) {
-			if(this.stream_cache_feedback) {
-				clearInterval(this.stream_cache_feedback);
-			}
-
-			this.stream_cache_feedback = setInterval(this.checkFeedbacks.bind(this, 'streaming'), this.CACHE_FEEDBACK_TIME);
-		}
 	}
 
-	get_latest_image(force = false) {
+	get_latest_image() {
+		if(this._image_refresh) {
+			clearTimeout(this._image_refresh);
+		}
 		if(!this._isConnected()) {
 			return;
 		}
 
 		let image_location;
-
-		// Do not refresh if last refresh was recent
-		if(!force && this._next_preview_refresh > Date.now()) {
-			return;
-		}
 
 		try {
 			// Version 4.6+ includes the image in the stream
@@ -943,63 +970,12 @@ class instance extends instance_skel {
 
 	setImage(image) {
 		this.image = image;
-		this._next_preview_refresh = Date.now() + this.PREVIEW_REFRESH;
-		return this;
-	}
 
-	/**
-	 *
-	 * @param {Object} feedback Feedback data to process
-	 * @param {Object} bank The bank this feedback is from
-	 * @returns {Object} Feedback information
-	 * @access public
-	 * @since 1.0.0
-	 */
-	feedback(feedback, bank) {
-		if(feedback.type === 'previewpic') {
-			if(this.image) {
-				return {
-					png64: this.image
-				}
-			}
-		} else if(feedback.type === 'streaming' && this.is_live(feedback.options.channel)) {
-			let ret = {};
-			if(feedback.options.fg !== 16777215 || feedback.options.bg !== 16777215) {
-				ret.color = feedback.options.fg;
-				ret.bgcolor = feedback.options.bg;
-			}
-			if('text' in feedback.options && feedback.options.text !== '') {
-				ret.text = feedback.options.text;
-			}
-
-			return ret;
-		} else if(feedback.type === 'active' && feedback.options.channel == this.cur_channel) {
-			return {
-				color: feedback.options.fg,
-				bgcolor: feedback.options.bg
-			};
-		} else if(feedback.type === 'cuepoint' && feedback.options.cuepoint_id in this.cuepoints) {
-			let ret = {
-				color: feedback.options.fg,
-				bgcolor: feedback.options.bg
-			};
-			if(feedback.options.use_preview && feedback.options.use_preview === 'image' && this.cuepoints[feedback.options.cuepoint_id].image) {
-				ret.png64 = this.cuepoints[feedback.options.cuepoint_id].image;
-			}
-			return ret;
-		} else if(feedback.type === 'playing' && 'playing' in this.player_status && this.player_status.playing) {
-			return {
-				color: feedback.options.fg,
-				bgcolor: feedback.options.bg
-			};
-		} else if(feedback.type === 'stopped' && 'playing' in this.player_status && !this.player_status.playing) {
-			return {
-				color: feedback.options.fg,
-				bgcolor: feedback.options.bg
-			};
+		if(this.is_playing()) {
+			this._image_refresh = setTimeout(this.get_latest_image.bind(this), this.PREVIEW_REFRESH);
 		}
 
-		return {};
+		return this;
 	}
 
 	/**
@@ -1037,6 +1013,10 @@ class instance extends instance_skel {
 	 * Ends current socket connection
 	 */
 	_endConnection() {
+		if(this._image_refresh) {
+			clearTimeout(this._image_refresh);
+		}
+
 		if(this.socket !== undefined) {
 			this.socket.close();
 			delete this.socket;
