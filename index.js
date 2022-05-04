@@ -63,15 +63,15 @@ class instance extends instance_skel {
 	initVariables() {
 		var variables = [
 			{
-				label: 'Current playing time of video.',
+				label: 'Current playing time of video (HH:MM:SS format).',
 				name:  'time'
 			},
 			{
-				label: 'Current duration of playing video.',
+				label: 'Current duration of playing video (HH:MM:SS format).',
 				name:  'duration'
 			},
 			{
-				label: 'Remaining time in playing video.',
+				label: 'Remaining time in playing video (HH:MM:SS format).',
 				name:  'remaining'
 			}
 		];
@@ -420,11 +420,10 @@ class instance extends instance_skel {
 						choices: this._get_channel_choices(true)
 					},
 					{
-						type: 'textinput',
-						label: 'Start time (blank for end)',
+						type: 'textwithvariables',
+						label: 'Start time in seconds or HH:MM:SS format (empty for end, if live, or start if not live)',
 						id: 'initial_time',
 						default: '',
-						regex: this.REGEX_SIGNED_NUMBER
 					}
 				]
 			},
@@ -441,6 +440,18 @@ class instance extends instance_skel {
 						default: 5,
 						tooltip: 'Time, in seconds, to skip back/ahead. Use negative numbers to skip backwards.',
 						regex: this.REGEX_SIGNED_NUMBER
+					}
+				]
+			},
+			'goto': {
+				label: 'Go to time in current channel',
+				options: [
+					{
+						type: 'textwithvariables',
+						label: 'Time',
+						id: 'time',
+						default: '',
+						tooltip: 'Time to go to in seconds or HH:MM:SS format.',
 					}
 				]
 			},
@@ -596,6 +607,24 @@ class instance extends instance_skel {
 			.substr(11, 8);
 	}
 
+	_toSeconds(formatted_time) {
+		if(formatted_time === '') return '';
+
+		const unparsed_time = String(formatted_time)
+			.split(':')
+			.reverse();
+		let time = parseInt(unparsed_time[0]);
+
+		switch(unparsed_time.length) {
+			case 3:
+				time += parseInt(unparsed_time[2]) * 3600;
+			case 2:
+				time += parseInt(unparsed_time[1]) * 60;
+		}
+
+		return time;
+	}
+
 	/**
 	 * Get new start time based on new time, to insure we have a buffer and aren't trying to start at a negative time
 	 * @param {String} id ID of channel to check
@@ -705,7 +734,19 @@ class instance extends instance_skel {
 				break;
 
 			case 'channel':
-				this.load_channel(opt.channel, opt.initial_time);
+				this.parseVariables(opt.initial_time, (init_time) => {
+					this.load_channel(opt.channel, this._toSeconds(init_time));
+				});
+				break;
+
+			case 'goto':
+				if(this.cur_channel === null) {
+					this.log('warn', 'Cannot go to time when channel not loaded.');
+				} else {
+					this.parseVariables(opt.time, (time) => {
+						this.load_channel(this.cur_channel, this._toSeconds(time));
+					});
+				}
 				break;
 
 			case 'skip':
