@@ -4,7 +4,7 @@ const request = require('request').defaults({
 	requestCert: true,
 	agent: false
 });
-const sharp = require('sharp');
+const jimp = require('jimp');
 const { InstanceBase, Regex, combineRgb, CreateConvertToBooleanFeedbackUpgradeScript, runEntrypoint } = require('@companion-module/base')
 
 /**
@@ -12,11 +12,6 @@ const { InstanceBase, Regex, combineRgb, CreateConvertToBooleanFeedbackUpgradeSc
  * @author Justin Osborne (<osborne@churchofthehighlands.com>)
  */
 class ConnectDvrInstance extends InstanceBase {
-	/**
-	 * Main initialization when it's ok to login
-	 * @access public
-	 * @since 1.0.0
-	 */
 	 async init(config) {
 		this.config = config;
 
@@ -697,7 +692,7 @@ class ConnectDvrInstance extends InstanceBase {
 
 	/**
 	 * Skip to different time for output
-	 * @param {String} time Time to jump forward/behind
+	 * @param {CompanionActionEvent} event skip_time
 	 * @access public
 	 * @since 1.0.0
 	 */
@@ -744,7 +739,7 @@ class ConnectDvrInstance extends InstanceBase {
 
 	/**
 	 * Set a cuepoint
-	 * @param {String} cuepoint_id
+	 * @param {CompanionActionEvent} event cuepoint_id
 	 * @access public
 	 * @since 1.1.0
 	 */
@@ -768,10 +763,8 @@ class ConnectDvrInstance extends InstanceBase {
 
 	/**
 	 * Recalls a saved cuepoint
-	 * @param {String} cuepoint_id
-	 * @param {String} play_state How to start the recall (play/pause)
+	 * @param {CompanionActionEvent} event cuepoint_id and play_state
 	 * @access public
-	 * @returns {Boolean|void}
 	 * @since 1.1.0
 	 */
 	recall_cuepoint(event) {
@@ -953,7 +946,7 @@ class ConnectDvrInstance extends InstanceBase {
 		this.checkFeedbacks(...Object.keys(feedbacks));
 	}
 
-	get_latest_image() {
+	async get_latest_image() {
 		if(this._image_refresh) {
 			clearTimeout(this._image_refresh);
 		}
@@ -962,35 +955,27 @@ class ConnectDvrInstance extends InstanceBase {
 		}
 
 		let image_location;
-
-		try {
-			// Version 4.6+ includes the image in the stream
-			if('image_primary' in this.player_status) {
-				image_location = this.player_status.image_primary;
-			} else {
-				image_location = 'assets/img/live_screenshot_primary.jpg';
-			}
-			const buff = request.get({
-				url: 'https://' + this.config.host + '/' + image_location,
-				encoding: null
-			}, (error, resp, body) => {
-				try {
-					sharp(Buffer.from(body))
-						.resize(72, 48)
-						.png()
-						.toBuffer((err, buffer) => {
-							this.setImage(buffer);
-							this.checkFeedbacks('previewpic');
-						});
-				} catch (e) {
-					this.log('warn', 'Error processing preview image.');
-					this.setImage(null);
-				}
-			});
-		} catch (e) {
-			this.log('warn', 'Failed to pull latest image.');
-			this.setImage(null);
+		if('image_primary' in this.player_status) {
+			image_location = this.player_status.image_primary;
+		} else {
+			image_location = 'assets/img/live_screenshot_primary.jpg';
 		}
+
+		jimp.read({
+			url: 'https://' + this.config.host + '/' + image_location,
+			rejectUnauthorized: false
+		}).then(image => {
+			image.resize(72, 48)
+				.getBufferAsync(jimp.MIME_PNG)
+				.then(buff => {
+					this.setImage(buff);
+					this.checkFeedbacks('previewpic');
+				})
+				.catch(err => this.setImage(null));
+		}).catch(err => {
+			this.log('warn', 'Error processing preview image.');
+			this.setImage(null);
+		})
 	}
 
 	setImage(image) {
