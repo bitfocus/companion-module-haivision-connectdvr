@@ -1,4 +1,3 @@
-const instance_skel = require('../../instance_skel');
 const io = require('socket.io-client');
 const request = require('request').defaults({
 	rejectUnauthorized: false, // There's a good chance the DE doesn't have a valid cert
@@ -6,23 +5,26 @@ const request = require('request').defaults({
 	agent: false
 });
 const sharp = require('sharp');
+const { InstanceBase, Regex, combineRgb, CreateConvertToBooleanFeedbackUpgradeScript, runEntrypoint } = require('@companion-module/base')
 
 /**
  * Companion instance for managing Haivision DE devices
- *
- * @version 1.0.5
- * @since 1.0.0
  * @author Justin Osborne (<osborne@churchofthehighlands.com>)
  */
-class instance extends instance_skel {
-	constructor(system, id, config) {
-		super(system, id, config);
+class ConnectDvrInstance extends InstanceBase {
+	/**
+	 * Main initialization when it's ok to login
+	 * @access public
+	 * @since 1.0.0
+	 */
+	 async init(config) {
+		this.config = config;
 
-		this.defineConst('MIN_BUFFER_TIME', 25);
-		this.defineConst('RECONNECT_TIMEOUT', 10); // Number of seconds to try reconnect
-		this.defineConst('REBOOT_WAIT_TIME', 210); // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
-		this.defineConst('PREVIEW_REFRESH', 1500); // Only pull thumbnail every x millisec
-		this.defineConst('LOGIN_TIMEOUT', 5000); // Timeout for logins
+		this.MIN_BUFFER_TIME = 25;
+		this.RECONNECT_TIMEOUT = 10; // Number of seconds to try reconnect
+		this.REBOOT_WAIT_TIME = 210; // Number of seconds to wait until next login after reboot; usually back up within 3.5 mins
+		this.PREVIEW_REFRESH = 1500; // Only pull thumbnail every x millisec
+		this.LOGIN_TIMEOUT = 5000; // Timeout for logins
 
 		this.reconnecting = null;
 
@@ -35,14 +37,17 @@ class instance extends instance_skel {
 		this.cuepoints = {};
 		this._image_refresh = null;
 		this._login_request = null;
-		this.actions(); // export actions
 
-		return this;
+		this.initVariables();
+
+		if(this.config.host) {
+			this.login(true);
+		}
 	}
 
 	static GetUpgradeScripts() {
 		return [
-			instance_skel.CreateConvertToBooleanFeedbackUpgradeScript({
+			CreateConvertToBooleanFeedbackUpgradeScript({
 				'streaming': {
 					'bg': 'bgcolor',
 					'fg': 'color',
@@ -63,23 +68,25 @@ class instance extends instance_skel {
 	initVariables() {
 		var variables = [
 			{
-				label: 'Current playing time of video (HH:MM:SS format).',
-				name:  'time'
+				name: 'Current playing time of video (HH:MM:SS format).',
+				variableId:  'time'
 			},
 			{
-				label: 'Current duration of playing video (HH:MM:SS format).',
-				name:  'duration'
+				name: 'Current duration of playing video (HH:MM:SS format).',
+				variableId:  'duration'
 			},
 			{
-				label: 'Remaining time in playing video (HH:MM:SS format).',
-				name:  'remaining'
+				name: 'Remaining time in playing video (HH:MM:SS format).',
+				variableId:  'remaining'
 			}
 		];
 
 		this.setVariableDefinitions(variables);
-		this.setVariable('time', '00:00:00');
-		this.setVariable('duration', '00:00:00');
-		this.setVariable('remaining', '00:00:00');
+		this.setVariableValues({
+			time: '00:00:00',
+			duration: '00:00:00',
+			remaining: '00:00:00',
+		});
 	}
 
 	/**
@@ -88,7 +95,7 @@ class instance extends instance_skel {
 	 * @access public
 	 * @since 1.0.0
 	 */
-	updateConfig(config) {
+	async configUpdated(config) {
 		if(this.session_id) {
 			this.logout();
 		}
@@ -100,26 +107,12 @@ class instance extends instance_skel {
 	}
 
 	/**
-	 * Main initialization when it's ok to login
-	 * @access public
-	 * @since 1.0.0
-	 */
-	init() {
-		this.status(this.STATUS_UNKNOWN);
-		this.initVariables();
-
-		if(this.config.host) {
-			this.login(true);
-		}
-	}
-
-	/**
 	 * Initialize the socket.io connection to the server after successful login
 	 * @access public
 	 * @since 1.0.0
 	 */
 	initSocket() {
-		this.status(this.STATUS_WARNING, 'Connecting to socket');
+		this.updateStatus('connecting', 'Connecting to socket');
 		this.socket = io('https://' + this.config.host, {
 			path: '/transport/socket.io/',
 			rejectUnauthorized: false,
@@ -136,10 +129,10 @@ class instance extends instance_skel {
 
 		this.socket
 			.on('connect', () => {
-				this.status(this.STATUS_OK);
+				this.updateStatus('ok');
 			})
 			.on('connect_error', this._reconnect.bind(this))
-			.on('logout', this._reconnect.bind(this, true))
+			.on('logout', this._reconnect.bind(this, null, true))
 			.on('model:delta', (type, arg1) => {
 					if(type === 'player') {
 						this._player_updates(arg1);
@@ -165,10 +158,10 @@ class instance extends instance_skel {
 
 		// If current channel is playing, update the duration variable
 		if(id === this.cur_channel) {
-			this.setVariable('duration', this._userFriendlyTime(this.channels[this.cur_channel].duration));
-			if('time' in this.player_status) {
-				this.setVariable('remaining', this._userFriendlyTime(this.channels[this.cur_channel].duration - this.player_status.time));
-			}
+			this.setVariableValues({
+				duration: this._userFriendlyTime(this.channels[this.cur_channel].duration),
+				remaining: 'time' in this.player_status ? this._userFriendlyTime(this.channels[this.cur_channel].duration - this.player_status.time) : '00:00:00'
+			});
 		}
 
 		// cloud_duration is sent often for all channels, so we'll use it to validate that the duration is increasing
@@ -193,13 +186,12 @@ class instance extends instance_skel {
 			this._set_cur_time(args.time);
 		}
 		if('active_channel_id' in args) {
-			this.debug('Setting active channel to ' + args.active_channel_id);
+			this.log('debug', 'Setting active channel to ' + args.active_channel_id);
 			this.set_live_channel(args.active_channel_id);
 		}
 		if('playing' in args) {
 			this.get_latest_image();
-			this.checkFeedbacks('playing');
-			this.checkFeedbacks('stopped');
+			this.checkFeedbacks('playing', 'stopped');
 		}
 	}
 
@@ -211,7 +203,9 @@ class instance extends instance_skel {
 	 */
 	_set_cur_time(time) {
 		this.cur_time = parseFloat(time);
-		this.setVariable('time', this._userFriendlyTime(this.cur_time));
+		this.setVariableValues({
+			time: this._userFriendlyTime(this.cur_time)
+		});
 
 		return this.cur_time;
 	}
@@ -222,10 +216,9 @@ class instance extends instance_skel {
 	 * @access public
 	 * @since 1.0.0
 	 */
-	_reconnect(retry_immediately) {
-		this.debug('Connection ended, could be due to a stale connection/logout/reboot/network issue.');
-		this.log('warn', 'Connection to server ended. Will attempt to reconnect.');
-		this.status(this.STATUS_ERROR);
+	_reconnect(error, retry_immediately) {
+		this.log('warn', `Connection to server ended. Will attempt to reconnect. Error ${error.message}`);
+		this.updateStatus('disconnected', 'Disconnected and will attempt to reconnect...');
 
 		this._endConnection();
 
@@ -269,7 +262,7 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	login(retry = false) {
-		this.status(this.STATUS_WARNING, 'Logging in');
+		this.updateStatus('connecting', 'Logging in');
 
 		this._stopOldLogin();
 
@@ -287,9 +280,9 @@ class instance extends instance_skel {
 			}
 			this._login_request = null;
 			if(typeof response !== 'object' || !('statusCode' in response) || response.statusCode !== 200) {
-				this.debug(`Could not connect to ${this.config.host}: ${error}`);
+				this.log('debug', `Could not connect to ${this.config.host}: ${error}`);
 				this.log('warn', 'Could not connect to server.');
-				this.status(this.STATUS_ERROR);
+				this.updateStatus('connection_failure');
 				if(retry) {
 					this.keep_login_retry(this.RECONNECT_TIMEOUT);
 				}
@@ -344,10 +337,10 @@ class instance extends instance_skel {
 	 * @access public
 	 * @since 1.0.0
 	 */
-	config_fields() {
+	getConfigFields() {
 		return [
 			{
-				type: 'text',
+				type: 'static-text',
 				id: 'info',
 				width: 12,
 				label: 'Information',
@@ -358,20 +351,23 @@ class instance extends instance_skel {
 				id: 'host',
 				label: 'Target IP',
 				width: 12,
-				regex: this.REGEX_IP
+				regex: Regex.IP,
+				useVariables: true,
 			},
 			{
 				type: 'textinput',
 				id: 'username',
 				label: 'Username',
 				value: 'haioperator',
-				width: 6
+				width: 6,
+				useVariables: true,
 			},
 			{
 				type: 'textinput',
 				id: 'password',
 				label: 'Password',
-				width: 6
+				width: 6,
+				useVariables: true,
 			}
 		]
 	}
@@ -408,10 +404,14 @@ class instance extends instance_skel {
 	 * @since 1.0.0
 	 */
 	actions() {
-		this.setActions({
-			'playpause': { label: 'Play/Pause Toggle'},
-			'channel': {
-				label: 'Load Channel',
+		this.setActionDefinitions({
+			playpause: {
+				name: 'Play/Pause Toggle',
+				options: [],
+				callback: this.play_pause.bind(this)
+			},
+			channel: {
+				name: 'Load Channel',
 				options: [
 					{
 						type: 'dropdown',
@@ -420,43 +420,72 @@ class instance extends instance_skel {
 						choices: this._get_channel_choices(true)
 					},
 					{
-						type: 'textwithvariables',
+						type: 'textinput',
 						label: 'Start time in seconds or HH:MM:SS format (empty for end, if live, or start if not live)',
 						id: 'initial_time',
 						default: '',
+						useVariables: true,
 					}
-				]
+				],
+				callback: async (event) => {
+					const init_time = await this.parseVariablesInString(event.options.initial_time);
+
+					this.load_channel(event.options.channel, this._toSeconds(init_time));
+				}
 			},
-			'reboot': { label: 'Reboot Device'},
-			'play': { label: 'Play'},
-			'pause': { label: 'Pause'},
-			'skip': {
-				label: 'Skip',
+			reboot: {
+				name: 'Reboot Device',
+				options: [],
+				callback: this.reboot.bind(this)
+			},
+			play: {
+				name: 'Play',
+				options: [],
+				callback: this.play.bind(this)
+			},
+			pause: {
+				name: 'Pause',
+				options: [],
+				callback: this.pause.bind(this)
+			},
+			skip: {
+				name: 'Skip backward or forward',
+				description: 'Time, in seconds, to skip backward or forward. Use negative numbers to skip backwards.',
 				options: [
 					{
 						type: 'textinput',
 						label: 'Skip Time',
 						id: 'skip_time',
 						default: 5,
-						tooltip: 'Time, in seconds, to skip back/ahead. Use negative numbers to skip backwards.',
-						regex: this.REGEX_SIGNED_NUMBER
+						regex: Regex.SIGNED_NUMBER
 					}
-				]
+				],
+				callback: this.skip_live.bind(this)
 			},
-			'goto': {
-				label: 'Go to time in current channel',
+			goto: {
+				name: 'Go to time in current channel',
 				options: [
 					{
-						type: 'textwithvariables',
+						type: 'textinput',
 						label: 'Time',
 						id: 'time',
 						default: '',
 						tooltip: 'Time to go to in seconds or HH:MM:SS format.',
+						useVariables: true,
 					}
-				]
+				],
+				callback: async (event) => {
+					if(this.cur_channel === null) {
+						this.log('warn', 'Cannot go to time when channel not loaded.');
+					} else {
+						const time = await this.parseVariablesInString(event.options.time);
+
+						this.load_channel(this.cur_channel, this._toSeconds(time));
+					}
+				}
 			},
-			'set_cuepoint': {
-				label: 'Set Cue Point',
+			set_cuepoint: {
+				name: 'Set Cue Point',
 				options: [
 					{
 						type: 'dropdown',
@@ -466,10 +495,11 @@ class instance extends instance_skel {
 						tooltip: 'Select a slot to store the current elapsed time and channel as a cuepoint for later recall. Set points do not survive a server restart.',
 						choices: this._get_allowed_cuepoints()
 					}
-				]
+				],
+				callback: this.set_cuepoint.bind(this)
 			},
-			'recall_cuepoint': {
-				label: 'Recall Cue Point',
+			recall_cuepoint: {
+				name: 'Recall Cue Point',
 				options: [
 					{
 						type: 'dropdown',
@@ -490,11 +520,12 @@ class instance extends instance_skel {
 							{ id: 'pause', label: 'Paused' }
 						]
 					}
-				]
+				],
+				callback: this.recall_cuepoint.bind(this)
 			}
 		});
 	}
-
+	
 	/**
 	 * Returns list of allowed cue points slots
 	 * @access protected
@@ -572,7 +603,7 @@ class instance extends instance_skel {
 
 		this.log('info', 'Loading channel ' + id + ' at ' + init_time + '.');
 
-		this.socket.emit('sendAndCallback2', 'playback:loadChannel', id, init_time, false, -1, callback);
+		this.socket.emit('sendAndCallback2', 'playback:loadChannel', id, init_time, false, -1, false, null, callback);
 		this.set_live_channel(id);
 
 		return true;
@@ -670,12 +701,12 @@ class instance extends instance_skel {
 	 * @access public
 	 * @since 1.0.0
 	 */
-	skip_live(time) {
+	skip_live(event) {
 		if(!this.is_currently_active()) {
 			return false;
 		}
 
-		time = parseFloat(time);
+		const time = parseFloat(event.options.skip_time);
 		this.log('info', 'Skipping time by ' + time + '. From ' + this.cur_time + ' -> ' + (this.cur_time + time) + '.');
 
 		this.load_channel(this.cur_channel, this.cur_time + time);
@@ -691,7 +722,7 @@ class instance extends instance_skel {
 		if(!this._isConnected()) {
 			return;
 		}
-		this.status(this.STATUS_ERROR);
+		this.updateStatus('disconnected', 'Rebooting...');
 
 		request.put({
 			url: 'https://' + this.config.host + '/api/settings/reboot',
@@ -712,68 +743,14 @@ class instance extends instance_skel {
 	}
 
 	/**
-	 * Executes the action
-	 * @param {Object} action Action to execute
-	 * @access public
-	 * @since 1.0.0
-	 */
-	action(action) {
-		var opt = action.options;
-
-		switch (action.action) {
-			case 'playpause':
-				this.play_pause();
-				break;
-
-			case 'play':
-				this.play();
-				break;
-
-			case 'pause':
-				this.pause();
-				break;
-
-			case 'channel':
-				this.parseVariables(opt.initial_time, (init_time) => {
-					this.load_channel(opt.channel, this._toSeconds(init_time));
-				});
-				break;
-
-			case 'goto':
-				if(this.cur_channel === null) {
-					this.log('warn', 'Cannot go to time when channel not loaded.');
-				} else {
-					this.parseVariables(opt.time, (time) => {
-						this.load_channel(this.cur_channel, this._toSeconds(time));
-					});
-				}
-				break;
-
-			case 'skip':
-				this.skip_live(opt.skip_time);
-				break;
-
-			case 'set_cuepoint':
-				this.set_cuepoint(opt.cuepoint_id);
-				break;
-
-			case 'recall_cuepoint':
-				this.recall_cuepoint(opt.cuepoint_id, opt.play_state);
-				break;
-
-			case 'reboot':
-				this.reboot();
-				break;
-		}
-	}
-
-	/**
 	 * Set a cuepoint
 	 * @param {String} cuepoint_id
 	 * @access public
 	 * @since 1.1.0
 	 */
-	set_cuepoint(cuepoint_id) {
+	set_cuepoint(event) {
+		const cuepoint_id = event.options.cuepoint_id;
+
 		if(!this.is_currently_active()) {
 			this.log('info', 'No active channel to save cuepoint.');
 			return false;
@@ -797,7 +774,10 @@ class instance extends instance_skel {
 	 * @returns {Boolean|void}
 	 * @since 1.1.0
 	 */
-	recall_cuepoint(cuepoint_id, play_state) {
+	recall_cuepoint(event) {
+		const cuepoint_id = event.options.cuepoint_id;
+		const play_state = event.options.play_state;
+
 		if(!(cuepoint_id in this.cuepoints)) {
 			this.log('info', 'No cuepoint saved in slot ' + cuepoint_id);
 			return false;
@@ -805,6 +785,7 @@ class instance extends instance_skel {
 
 		this.log('info', 'Recalling cuepoint for slot ' + cuepoint_id);
 		const cuepoint = this.cuepoints[cuepoint_id];
+		// The reason we send a play_pause is because loads automatically start playing and we cannot stop that
 		this.load_channel(cuepoint.channel, cuepoint.time, play_state === 'pause' ? this.play_pause.bind(this) : null);
 	}
 
@@ -844,11 +825,11 @@ class instance extends instance_skel {
 		const feedbacks = {
 			streaming: {
 				type: 'boolean',
-				label: 'Channel is Streaming',
+				name: 'Channel is Streaming',
 				description: 'Indicates this channel is currently live streaming.',
-				style: {
-					color: this.rgb(255,255,255),
-					bgcolor: this.rgb(51, 102, 0)
+				defaultStyle: {
+					color: combineRgb(255,255,255),
+					bgcolor: combineRgb(51, 102, 0)
 				},
 				options: [
 					{
@@ -862,11 +843,11 @@ class instance extends instance_skel {
 			},
 			active: {
 				type: 'boolean',
-				label: 'Channel is Active',
+				name: 'Channel is Active',
 				description: 'Indicates this channel is currently active (playing/paused).',
-				style: {
-					color: this.rgb(255,255,255),
-					bgcolor: this.rgb(51, 102, 0)
+				defaultStyle: {
+					color: combineRgb(255,255,255),
+					bgcolor: combineRgb(51, 102, 0)
 				},
 				options: [
 					{
@@ -880,39 +861,42 @@ class instance extends instance_skel {
 			},
 			playing: {
 				type: 'boolean',
-				label: 'Output playing',
+				name: 'Output playing',
 				description: 'Indicates a channel is currently playing.',
-				style: {
-					color: this.rgb(255,255,255),
-					bgcolor: this.rgb(51, 102, 0)
+				options: [],
+				defaultStyle: {
+					color: combineRgb(255,255,255),
+					bgcolor: combineRgb(51, 102, 0)
 				},
 				callback: (feedback) => this.is_playing()
 			},
 			stopped: {
 				type: 'boolean',
-				label: 'Output stopped',
+				name: 'Output stopped',
 				description: 'Indicates a channel is currently stopped.',
-				style: {
-					color: this.rgb(255,255,255),
-					bgcolor: this.rgb(128, 0, 0)
+				options: [],
+				defaultStyle: {
+					color: combineRgb(255,255,255),
+					bgcolor: combineRgb(128, 0, 0)
 				},
 				callback: (feedback) => !this.is_playing()
 			},
 			cuepoint: {
-				label: 'Cue Point Slot Saved',
+				type: 'advanced',
+				name: 'Cue Point Slot Saved',
 				description: 'Indicates a cue point is saved.',
 				options: [
 					{
 						type: 'colorpicker',
 						label: 'Foreground color',
 						id: 'fg',
-						default: this.rgb(255,255,255)
+						default: combineRgb(255,255,255)
 					},
 					{
 						type: 'colorpicker',
 						label: 'Background color',
 						id: 'bg',
-						default: this.rgb(128, 0, 0)
+						default: combineRgb(128, 0, 0)
 					},
 					{
 						type: 'dropdown',
@@ -936,6 +920,7 @@ class instance extends instance_skel {
 							color: feedback.options.fg,
 							bgcolor: feedback.options.bg
 						};
+						this.log('debug', feedback.options.use_preview);
 						if(feedback.options.use_preview && feedback.options.use_preview === 'image' && this.cuepoints[feedback.options.cuepoint_id].image) {
 							ret.png64 = this.cuepoints[feedback.options.cuepoint_id].image;
 						}
@@ -948,8 +933,9 @@ class instance extends instance_skel {
 			},
 			previewpic: {
 				type: 'advanced',
-				label: 'Preview',
+				name: 'Preview',
 				description: 'Preview output image',
+				options: [],
 				callback: (feedback) => {
 					if(this.image) {
 						return {
@@ -964,9 +950,7 @@ class instance extends instance_skel {
 
 		this.setFeedbackDefinitions(feedbacks);
 
-		for(let feedback in feedbacks) {
-			this.checkFeedbacks(feedback);
-		}
+		this.checkFeedbacks(...Object.keys(feedbacks));
 	}
 
 	get_latest_image() {
@@ -1024,30 +1008,35 @@ class instance extends instance_skel {
 	 * @access public
 	 * @since 1.0.0
 	 */
-	logout() {
+	async logout() {
 		this._endConnection();
 
 		if(!this.session_id) {
 			return;
 		}
 
-		request.delete({
-			url: 'https://' + this.config.host + '/api/session',
-			headers: {
-				Cookie: 'sessionID=' + this.session_id
-			},
-			json: true,
-			body: {}
-		}, (error, response, body) => {
-			if(error || !response || !response.statusCode || response.statusCode !== 200) {
-				this.debug('warn', 'Could not logout: ' + error);
-			} else {
-				this.log('info', 'Session logged out.');
-			}
-		});
+		return new Promise((resolve) => {
+			request.delete({
+				url: 'https://' + this.config.host + '/api/session',
+				headers: {
+					Cookie: 'sessionID=' + this.session_id
+				},
+				json: true,
+				body: {}
+			}, (error, response, body) => {
+				this.updateStatus('disconnected');
 
-		// Server may be down/unreachable, so don't wait for a response here
-		this.session_id = null;
+				if(error || !response || !response.statusCode || response.statusCode !== 200) {
+					this.log('warn', 'Could not logout: ' + error);
+				} else {
+					this.log('info', 'Session logged out.');
+				}
+
+				resolve();
+			});
+
+			this.session_id = null;
+		});
 	}
 
 	/**
@@ -1068,10 +1057,10 @@ class instance extends instance_skel {
 	 * Ends session if connected
 	 * @since 1.0.0
 	 */
-	destroy() {
+	async destroy() {
 		this._stopOldLogin();
-		this.logout();
+		await this.logout();
 	}
 }
 
-exports = module.exports = instance;
+runEntrypoint(ConnectDvrInstance, [])
