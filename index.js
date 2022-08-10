@@ -1,11 +1,7 @@
-const io = require('socket.io-client');
-const request = require('request').defaults({
-	rejectUnauthorized: false, // There's a good chance the DE doesn't have a valid cert
-	requestCert: true,
-	agent: false
-});
-const jimp = require('jimp');
-const { InstanceBase, Regex, combineRgb, CreateConvertToBooleanFeedbackUpgradeScript, runEntrypoint } = require('@companion-module/base')
+import io from 'socket.io-client';
+import got from 'got';
+import jimp from 'jimp';
+import { InstanceBase, Regex, combineRgb, CreateConvertToBooleanFeedbackUpgradeScript, runEntrypoint } from '@companion-module/base'
 
 /**
  * Companion instance for managing Haivision DE devices
@@ -31,7 +27,6 @@ class ConnectDvrInstance extends InstanceBase {
 		this.stream_cache_feedback = null;
 		this.cuepoints = {};
 		this._image_refresh = null;
-		this._login_request = null;
 
 		this.initVariables();
 
@@ -229,10 +224,6 @@ class ConnectDvrInstance extends InstanceBase {
 			clearTimeout(this.reconnecting);
 			this.reconnecting = null;
 		}
-		if(this._login_request !== null) {
-			this._login_request.abort();
-			this._login_request = null;
-		}
 	}
 
 	/**
@@ -241,39 +232,41 @@ class ConnectDvrInstance extends InstanceBase {
 	 * @access public
 	 * @since 1.0.0
 	 */
-	login(retry = false) {
+	async login(retry = false) {
 		this.updateStatus('connecting', 'Logging in');
 
 		this._stopOldLogin();
 
-		this._login_request = request.post({
-			url: 'https://' + this.config.host + '/api/session',
-			json: true,
-			body: {
+		const data = await got.post(`https://${this.config.host}/api/session`, {
+			json: {
 				username: this.config.username,
 				password: this.config.password
 			},
-			timeout: this.LOGIN_TIMEOUT
-		}, (error, response, session_content) => {
-			if(this._login_request === null) {
-				return;
-			}
-			this._login_request = null;
-			if(typeof response !== 'object' || !('statusCode' in response) || response.statusCode !== 200) {
-				this.log('debug', `Could not connect to ${this.config.host}: ${error}`);
-				this.log('warn', 'Could not connect to server.');
-				this.updateStatus('connection_failure');
-				if(retry) {
-					this.keep_login_retry(this.RECONNECT_TIMEOUT);
-				}
-				return;
-			}
+			timeout: {
+				request: this.LOGIN_TIMEOUT
+			},
+			https: {
+				rejectUnauthorized: false,
+			},
+		}).json()
+		.catch((e) => {
+			this.log('debug', `Could not connect to ${this.config.host}: ${error}`);
+			this.updateStatus('connection_failure', e.message)
 
-			this.session_id = session_content.response.sessionID;
+			if(retry) {
+				this.keep_login_retry(this.RECONNECT_TIMEOUT);
+			}
+		})
+
+		if(data) {
+			this.session_id = data.response.sessionID;
 			this.log('info', 'Successfully connected. Session ID is ' + this.session_id + '.');
 
 			this.initSocket();
-		});
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 	/**
@@ -699,24 +692,24 @@ class ConnectDvrInstance extends InstanceBase {
 	 * @access public
 	 * @since 1.0.0
 	 */
-	reboot() {
+	async reboot() {
 		if(!this._isConnected()) {
 			return;
 		}
 		this.updateStatus('disconnected', 'Rebooting...');
 
-		request.put({
-			url: 'https://' + this.config.host + '/api/settings/reboot',
+		this.log('info', 'Ending connecting and rebooting...');
+		await got.put(`https://${this.config.host}/api/settings/reboot`, {
+			json: {
+				id: 0
+			},
 			headers: {
 				Cookie: 'sessionID=' + this.session_id
 			},
-			json: true,
-			body: {
-				id: 0
-			}
-		}, (error, response, body) => {
-			this.log('info', 'Ending connecting and rebooting...');
-		});
+			https: {
+				rejectUnauthorized: false,
+			},
+		}).catch(e => {})
 
 		this._endConnection();
 		this.session_id = null;
@@ -986,28 +979,21 @@ class ConnectDvrInstance extends InstanceBase {
 			return;
 		}
 
-		return new Promise((resolve) => {
-			request.delete({
-				url: 'https://' + this.config.host + '/api/session',
-				headers: {
-					Cookie: 'sessionID=' + this.session_id
-				},
-				json: true,
-				body: {}
-			}, (error, response, body) => {
-				this.updateStatus('disconnected');
-
-				if(error || !response || !response.statusCode || response.statusCode !== 200) {
-					this.log('warn', 'Could not logout: ' + error);
-				} else {
-					this.log('info', 'Session logged out.');
-				}
-
-				resolve();
-			});
-
-			this.session_id = null;
+		await got.delete(`https://${this.config.host}/api/session`, {
+			https: {
+				rejectUnauthorized: false,
+			},
+			headers: {
+				Cookie: 'sessionID=' + this.session_id
+			},
+			json: {}
+		}).then(data => {
+			this.log('info', 'Session logged out.');
+		}).catch(e => {
+			this.log('warn', 'Could not logout: ' + e.message)
 		});
+		this.session_id = null;
+		this.updateStatus('disconnected');
 	}
 
 	/**
