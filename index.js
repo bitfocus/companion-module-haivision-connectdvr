@@ -559,7 +559,7 @@ class ConnectDvrInstance extends InstanceBase {
 	 * @returns {Boolean}
 	 */
 	_is_valid_channel(id) {
-		if(id in this.channels) {
+		if(id in this.channels && (this.channels[id].error ?? false) === false) {
 			return true;
 		}
 
@@ -591,7 +591,8 @@ class ConnectDvrInstance extends InstanceBase {
 		}
 
 		if(!this._is_valid_channel(id)) {
-			return false; // Do not attempt to load an invalid channel
+			this.log('warn', `Cannot load invalid channel ${id}`);
+			return false;
 		}
 
 		init_time = this._get_new_init_time(id, init_time);
