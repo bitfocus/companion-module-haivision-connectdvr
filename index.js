@@ -40,21 +40,6 @@ class ConnectDvrInstance extends InstanceBase {
 		}
 	}
 
-	static GetUpgradeScripts() {
-		return [
-			CreateConvertToBooleanFeedbackUpgradeScript({
-				'streaming': {
-					'bg': 'bgcolor',
-					'fg': 'color',
-					'text': 'text'
-				},
-				'active': true,
-				'playing': true,
-				'stopped': true,
-			}),
-		]
-	}
-
 	/**
 	 * Initialize the available variables. (These are listed in the module config UI)
 	 * @access public
@@ -1049,4 +1034,15 @@ class ConnectDvrInstance extends InstanceBase {
 	}
 }
 
-runEntrypoint(ConnectDvrInstance, [])
+runEntrypoint(ConnectDvrInstance, [
+	CreateConvertToBooleanFeedbackUpgradeScript({
+		streaming: {
+			bg: 'bgcolor',
+			fg: 'color',
+			text: 'text',
+		},
+		active: true,
+		playing: true,
+		stopped: true,
+	}),
+])
