@@ -533,7 +533,7 @@ class instance extends instance_skel {
 	 * @returns {Boolean}
 	 */
 	_is_valid_channel(id) {
-		if(id in this.channels) {
+		if(id in this.channels && (this.channels[id].error ?? false) === false) {
 			return true;
 		}
 
@@ -565,6 +565,7 @@ class instance extends instance_skel {
 		}
 
 		if(!this._is_valid_channel(id)) {
+			this.log('warn', `Cannot load invalid channel ${id}`);
 			return false; // Do not attempt to load an invalid channel
 		}
 
