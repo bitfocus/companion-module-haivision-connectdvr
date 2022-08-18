@@ -249,8 +249,8 @@ class ConnectDvrInstance extends InstanceBase {
 				rejectUnauthorized: false,
 			},
 		}).json()
-		.catch((e) => {
-			this.log('debug', `Could not connect to ${this.config.host}: ${error}`);
+		.catch(e => {
+			this.log('debug', `Could not connect to ${this.config.host}: ${e.message}`);
 			this.updateStatus('connection_failure', e.message)
 
 			if(retry) {
@@ -696,7 +696,6 @@ class ConnectDvrInstance extends InstanceBase {
 		if(!this._isConnected()) {
 			return;
 		}
-		this.updateStatus('disconnected', 'Rebooting...');
 
 		this.log('info', 'Ending connecting and rebooting...');
 		await got.put(`https://${this.config.host}/api/settings/reboot`, {
@@ -709,11 +708,14 @@ class ConnectDvrInstance extends InstanceBase {
 			https: {
 				rejectUnauthorized: false,
 			},
-		}).catch(e => {})
-
-		this._endConnection();
-		this.session_id = null;
-		this.keep_login_retry(this.REBOOT_WAIT_TIME);
+		}).then(d => {
+			this.updateStatus('disconnected', 'Rebooting...');
+			this._endConnection();
+			this.session_id = null;
+			this.keep_login_retry(this.REBOOT_WAIT_TIME);
+		}).catch(e => {
+			this.log('error', 'Could not reboot')
+		})
 	}
 
 	/**
