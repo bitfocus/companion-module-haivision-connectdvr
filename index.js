@@ -533,7 +533,7 @@ class instance extends instance_skel {
 	 * @returns {Boolean}
 	 */
 	_is_valid_channel(id) {
-		if(id in this.channels && (this.channels[id].error ?? false) === false) {
+		if(id in this.channels && (this.channels[id].error?.message ?? false) === false) {
 			return true;
 		}
 
