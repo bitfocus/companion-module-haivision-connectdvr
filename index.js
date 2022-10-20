@@ -166,7 +166,7 @@ class ConnectDvrInstance extends InstanceBase {
 		}
 		if('playing' in args) {
 			this.get_latest_image();
-			this.checkFeedbacks('playing', 'stopped');
+			this.checkFeedbacks('playing', 'stopped', 'previewpic');
 		}
 	}
 
