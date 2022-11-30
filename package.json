@@ -12,12 +12,12 @@
 		"url": "git+https://github.com/bitfocus/companion-module-haivision-connectdvr.git"
 	},
 	"dependencies": {
-		"@companion-module/base": "~0.4.6",
+		"@companion-module/base": "~0.6.1",
 		"got": "^12.3.1",
 		"jimp": "^0.16.1",
 		"socket.io-client": "2"
 	},
 	"devDependencies": {
-		"@companion-module/tools": "^0.3.1"
+		"@companion-module/tools": "^0.4.1"
 	}
 }
