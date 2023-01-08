@@ -107,7 +107,6 @@ class ConnectDvrInstance extends InstanceBase {
 				this.updateStatus('ok');
 			})
 			.on('connect_error', this._reconnect.bind(this))
-			.on('logout', this._reconnect.bind(this, null, true))
 			.on('model:delta', (type, arg1) => {
 					if(type === 'player') {
 						this._player_updates(arg1);
@@ -192,7 +191,7 @@ class ConnectDvrInstance extends InstanceBase {
 	 * @since 1.0.0
 	 */
 	_reconnect(error, retry_immediately) {
-		this.log('warn', `Connection to server ended. Will attempt to reconnect. Error ${error.message}`);
+		this.log('warn', `Connection to server ended. Will attempt to reconnect. Error ${error?.message}`);
 		this.updateStatus('disconnected', 'Disconnected and will attempt to reconnect...');
 
 		this._endConnection();
@@ -931,7 +930,7 @@ class ConnectDvrInstance extends InstanceBase {
 		if(this._image_refresh) {
 			clearTimeout(this._image_refresh);
 		}
-		if(!this._isConnected()) {
+		if(!this._isConnected() || !('read' in jimp)) {
 			return;
 		}
 
