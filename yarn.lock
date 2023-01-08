@@ -9,13 +9,13 @@
   dependencies:
     regenerator-runtime "^0.13.11"
 
-"@companion-module/base@~0.6.1":
-  version "0.6.1"
-  resolved "https://registry.yarnpkg.com/@companion-module/base/-/base-0.6.1.tgz#8987de675291dd0956e8c543e9cadfc8a1da6667"
-  integrity sha512-wzxXEEaGxMzAWONglE6jM8PHgs+ZruNy3zGH4cXpsCrnYxt6r4iQ8SAwFPgSBhmD+HOHp4ADImIacl6HUGsItw==
+"@companion-module/base@~1.0.2":
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/@companion-module/base/-/base-1.0.2.tgz#8d6438f80ccfffc10a720cd95487b3945348da9b"
+  integrity sha512-Q5K4tc9QKO53YFRcAq1JncC7l0fskRBEGyAmF1mMi3g6lqnrNW+3nROzZauCO8CrQ+39BY/SurOo4EDCl4v8QA==
   dependencies:
-    "@sentry/node" "^7.21.1"
-    "@sentry/tracing" "^7.21.1"
+    "@sentry/node" "^7.28.0"
+    "@sentry/tracing" "^7.28.0"
     ajv "^8.11.2"
     ejson "^2.2.3"
     eventemitter3 "^4.0.7"
@@ -24,10 +24,10 @@
     p-timeout "^4.1.0"
     tslib "^2.4.1"
 
-"@companion-module/tools@^0.4.1":
-  version "0.4.1"
-  resolved "https://registry.yarnpkg.com/@companion-module/tools/-/tools-0.4.1.tgz#d0a11b7c8a98d66854d38372fa07b9300f43b5e8"
-  integrity sha512-jug1qVvnbD/aMIcDxQItFhDGedbRiOgGEB76IC1xhIKXX5amOrzSiK4sje6F3tzfiyg3TxwisIKzyFWj9p4f5Q==
+"@companion-module/tools@^0.5.1":
+  version "0.5.1"
+  resolved "https://registry.yarnpkg.com/@companion-module/tools/-/tools-0.5.1.tgz#bb714648e09ef102c7270d58db1dd11489561f94"
+  integrity sha512-p3qefMkQHyYGltEHcx56OWmn+/Pf2ONKVUTiY3O5MZndBA08dB/4O2M0XvGOKhC5P0ovtaj8vhUWqeNI7BMf+Q==
   dependencies:
     "@typescript-eslint/eslint-plugin" "^5.44.0"
     "@typescript-eslint/parser" "^5.44.0"
@@ -442,7 +442,7 @@
     "@sentry/utils" "7.29.0"
     tslib "^1.9.3"
 
-"@sentry/node@^7.21.1":
+"@sentry/node@^7.28.0":
   version "7.29.0"
   resolved "https://registry.yarnpkg.com/@sentry/node/-/node-7.29.0.tgz#721aab15faef98f291b5a3fcb9b303565deb1e74"
   integrity sha512-s/bN/JS5gPTmwzVms4FtI5YNYtC9aGY4uqdx/llVrIiVv7G6md/oJJzKtO1C4dt6YshjGjSs5KCpEn1NM4+1iA==
@@ -455,7 +455,7 @@
     lru_map "^0.3.3"
     tslib "^1.9.3"
 
-"@sentry/tracing@^7.21.1":
+"@sentry/tracing@^7.28.0":
   version "7.29.0"
   resolved "https://registry.yarnpkg.com/@sentry/tracing/-/tracing-7.29.0.tgz#767f309cbff46ab12bec6ab3c266f7f03fec91fd"
   integrity sha512-MAN/G6XROtRhzo/KDjddb6VJn/Q1TaPLwdyj9vvfkUkBNtlt5k16oXp+u7eHWX0uujER9wnZtj2ivXaPeqq0VA==
