@@ -107,6 +107,7 @@ class ConnectDvrInstance extends InstanceBase {
 				this.updateStatus('ok');
 			})
 			.on('connect_error', this._reconnect.bind(this))
+			.on('logout', () => this._reconnect({ message: 'Session logged out...' }, true))
 			.on('model:delta', (type, arg1) => {
 					if(type === 'player') {
 						this._player_updates(arg1);
@@ -190,7 +191,7 @@ class ConnectDvrInstance extends InstanceBase {
 	 * @access public
 	 * @since 1.0.0
 	 */
-	_reconnect(error, retry_immediately) {
+	_reconnect(error, retry_immediately = false) {
 		this.log('warn', `Connection to server ended. Will attempt to reconnect. Error ${error?.message}`);
 		this.updateStatus('disconnected', 'Disconnected and will attempt to reconnect...');
 
@@ -497,7 +498,7 @@ class ConnectDvrInstance extends InstanceBase {
 			}
 		});
 	}
-	
+
 	/**
 	 * Returns list of allowed cue points slots
 	 * @access protected
